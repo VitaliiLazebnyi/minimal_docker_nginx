@@ -1,0 +1,43 @@
+worker_processes 1;
+daemon off;
+error_log /var/logs/nginx/error.log;
+pid /tmp/nginx/nginx.pid;
+
+events {
+    worker_connections 1024;
+}
+
+http {
+    passenger_root REPLACE_ME_PASSENGER_ROOT;
+    passenger_ruby /usr/local/bin/ruby;
+    
+    # Store passenger logs centrally
+    passenger_log_file /var/logs/passenger/passenger.log;
+    passenger_instance_registry_dir /tmp/passenger;
+
+    include /opt/nginx/conf/mime.types;
+    access_log /var/logs/nginx/access.log;
+    
+    client_body_temp_path /tmp/nginx/client_body;
+    fastcgi_temp_path /tmp/nginx/fastcgi_temp;
+    proxy_temp_path /tmp/nginx/proxy_temp;
+    scgi_temp_path /tmp/nginx/scgi_temp;
+    uwsgi_temp_path /tmp/nginx/uwsgi_temp;
+
+    server {
+        listen 80;
+        server_name localhost;
+        root /app/public;
+
+        passenger_enabled on;
+        passenger_app_env production;
+        passenger_user root;
+        passenger_group root;
+
+        location /health {
+            passenger_enabled on;
+            # Disable access log for health endpoint to save IO operations
+            access_log off;
+        }
+    }
+}

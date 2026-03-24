@@ -1,0 +1,7 @@
+NAME     INSTALLED  FIXED IN  TYPE    VULNERABILITY        SEVERITY  EPSS           RISK   
+busybox  1.37.0               binary  CVE-2025-60876       Medium    < 0.1% (19th)  < 0.1  
+busybox  1.37.0               binary  CVE-2025-46394       Low       < 0.1% (24th)  < 0.1  
+busybox  1.37.0               binary  CVE-2024-58251       Low       < 0.1% (22nd)  < 0.1  
+json     2.18.0     2.19.2    gem     GHSA-3m6g-2423-7cp3  High      < 0.1% (3rd)   < 0.1  
+nginx    1.28.0     1.29.5    binary  CVE-2026-1642        High      < 0.1% (3rd)   < 0.1  
+nginx    1.28.0     1.29.1    binary  CVE-2025-53859       Medium    < 0.1% (5th)   < 0.1
