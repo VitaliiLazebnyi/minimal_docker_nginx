@@ -16,6 +16,8 @@ http {
     # Store passenger logs centrally
     passenger_log_file /var/logs/passenger/passenger.log;
     passenger_instance_registry_dir /tmp/passenger;
+    # The default (<nginx prefix>/passenger_temp) is not writable by the unprivileged account.
+    passenger_temp_path /tmp/nginx/passenger_temp;
 
     include /opt/nginx/conf/mime.types;
     access_log /var/logs/nginx/access.log;

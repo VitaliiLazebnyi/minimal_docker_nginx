@@ -40,6 +40,11 @@ fileExistenceTests:
     shouldExist: true
     uid: 10001
     gid: 10001
+  - name: home directory of the application account, writable by it
+    path: /home/app
+    shouldExist: true
+    uid: 10001
+    gid: 10001
   - name: sticky, world-writable /tmp
     path: /tmp
     shouldExist: true
@@ -87,7 +92,9 @@ commandTests:
     command: /usr/local/bin/ruby
     args: ["-e", "require './config/environment'; print Rails.application.config.eager_load, ' ', Rails.version"]
     expectedOutput: ['^true 8\.1\.4$']
-  - name: the logrotate configuration parses (debug mode, nothing is rotated)
+    # Nothing on stderr either: no Bundler notice about an unwritable home directory, no warning.
+    excludedError: ['.']
+  - name: the logrotate configuration parses (no log exists yet, nothing is rotated)
     command: /usr/sbin/logrotate
-    args: ["--debug", "--state", "/tmp/logrotate.status", "/etc/logrotate.conf"]
+    args: ["--verbose", "--state", "/tmp/logrotate.status", "/etc/logrotate.conf"]
     exitCode: 0

@@ -69,8 +69,8 @@ Style/Send:
   Enabled: true
 Style/SingleLineBlockParams:
   Enabled: true
-Style/StringHashKeys:
-  Enabled: true
+# Style/StringHashKeys is intentionally NOT enabled: HTTP header names (public_file_server.headers, Net::HTTP)
+# and process environments are string-keyed by protocol, and its autocorrection turned such keys into symbols.
 
 # --- Sorbet: strictest sigils that are reachable ---
 # app/ and lib/ are `typed: strict` (every method has a signature, every constant a type).

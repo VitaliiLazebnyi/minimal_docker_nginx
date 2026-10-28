@@ -24,7 +24,7 @@ RUN apk add --no-cache gcc g++ make linux-headers patch musl-dev coreutils xz \
     tzdata sqlite-dev yaml-dev pcre2-dev curl-dev libxml2-dev libxslt-dev curl bash \
     openssl-dev zlib-dev libffi-dev readline-dev gdbm-dev ncurses-dev \
     logrotate perl tar procps && \
-    adduser -D -H -h /app -s /sbin/nologin -u "${APP_UID}" app
+    adduser -D -H -h /home/app -s /sbin/nologin -u "${APP_UID}" app
 
 # 2. Rails Application Setup
 ENV RAILS_ENV="production" \
@@ -80,8 +80,10 @@ RUN PASSENGER_ROOT=$(passenger-config --root) && \
     sed "s|REPLACE_ME_PASSENGER_ROOT|$PASSENGER_ROOT|g" /tmp/nginx.conf.template > /opt/nginx/conf/nginx.conf && \
     chmod 755 /bin/entrypoint.sh && chmod 644 /etc/logrotate.conf /opt/nginx/conf/nginx.conf && \
     # Runtime directories: every log under /var/logs (REQ-LOG-001), owned by the unprivileged account.
-    mkdir -p /my_runtime/var/logs/nginx /my_runtime/var/logs/passenger /my_runtime/tmp/nginx /my_runtime/tmp/passenger && \
-    chown -R app:app /my_runtime/var/logs /my_runtime/tmp/nginx /my_runtime/tmp/passenger && \
+    # The account's home directory is writable too (Bundler keeps its per-user settings there).
+    mkdir -p /my_runtime/var/logs/nginx /my_runtime/var/logs/passenger /my_runtime/tmp/nginx /my_runtime/tmp/passenger \
+      /my_runtime/home/app && \
+    chown -R app:app /my_runtime/var/logs /my_runtime/tmp/nginx /my_runtime/tmp/passenger /my_runtime/home/app && \
     chmod 1777 /my_runtime/tmp
 
 # 5. Hyper-Minimization Sequence (DOCKER_MINIMIZATION.md)
