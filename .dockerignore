@@ -1,0 +1,15 @@
+# The image only needs the application and the files of docker_config/.
+*
+!rails_app/
+!docker_config/
+# Development, test and tooling files of the application never reach the image.
+rails_app/.bundle
+rails_app/.mutant
+rails_app/.yardoc
+rails_app/coverage
+rails_app/doc
+rails_app/log/*
+rails_app/sorbet
+rails_app/spec
+rails_app/storage/*
+rails_app/tmp/*

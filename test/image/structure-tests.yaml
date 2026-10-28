@@ -1,0 +1,93 @@
+# container-structure-test (https://github.com/GoogleContainerTools/container-structure-test) for the
+# production image; run by the "Docker image" workflow (see CONTRIBUTING.md for a local run).
+schemaVersion: 2.0.0
+
+metadataTest:
+  user: "10001:10001"
+  workdir: /app
+  exposedPorts: ["80"]
+  entrypoint: ["/bin/sh", "/bin/entrypoint.sh"]
+  envVars:
+    - key: TZ
+      value: UTC
+    - key: RAILS_ENV
+      value: production
+
+fileExistenceTests:
+  - name: nginx binary
+    path: /opt/nginx/sbin/nginx
+    shouldExist: true
+    isExecutableBy: any
+  - name: nginx configuration
+    path: /opt/nginx/conf/nginx.conf
+    shouldExist: true
+    permissions: "-rw-r--r--"
+  - name: Ruby interpreter
+    path: /usr/local/bin/ruby
+    shouldExist: true
+    isExecutableBy: any
+  - name: logrotate configuration
+    path: /etc/logrotate.conf
+    shouldExist: true
+    permissions: "-rw-r--r--"
+  - name: nginx log directory, writable by the application account (REQ-LOG-001)
+    path: /var/logs/nginx
+    shouldExist: true
+    uid: 10001
+    gid: 10001
+  - name: Passenger log directory, writable by the application account (REQ-LOG-001)
+    path: /var/logs/passenger
+    shouldExist: true
+    uid: 10001
+    gid: 10001
+  - name: sticky, world-writable /tmp
+    path: /tmp
+    shouldExist: true
+    permissions: "dtrwxrwxrwx"
+  # REQ-DOCKER-001 / REQ-MIN-002: no curl, no compiler, no package manager in the final image.
+  - name: no curl
+    path: /usr/bin/curl
+    shouldExist: false
+  - name: no C compiler
+    path: /usr/bin/gcc
+    shouldExist: false
+  - name: no package manager
+    path: /sbin/apk
+    shouldExist: false
+  - name: no application specs
+    path: /app/spec
+    shouldExist: false
+
+fileContentTests:
+  - name: the application account exists (Passenger looks it up by uid)
+    path: /etc/passwd
+    expectedContents: ['app:x:10001:10001:']
+  - name: nginx.conf points Passenger at the installed gem
+    path: /opt/nginx/conf/nginx.conf
+    expectedContents: ['passenger_root /usr/local/bundle/gems/passenger-6\.2\.1;']
+    excludedContents: ['REPLACE_ME_PASSENGER_ROOT', 'passenger_user', 'passenger_group']
+  - name: logrotate signals the pid file nginx writes
+    path: /etc/logrotate.conf
+    expectedContents: ['/tmp/nginx/nginx\.pid']
+
+commandTests:
+  - name: Ruby version
+    command: /usr/local/bin/ruby
+    args: ["-e", "print RUBY_VERSION"]
+    expectedOutput: ['^4\.0\.9$']
+  - name: nginx version
+    command: /opt/nginx/sbin/nginx
+    args: ["-v"]
+    expectedError: ['nginx version: nginx/1\.30\.6']
+  - name: nginx configuration is valid (nginx -t)
+    command: /opt/nginx/sbin/nginx
+    args: ["-t", "-c", "/opt/nginx/conf/nginx.conf"]
+    expectedError: ['configuration file /opt/nginx/conf/nginx.conf test is successful']
+  - name: the Rails application boots in production (eager loading every file)
+    command: /usr/local/bin/ruby
+    args: ["-e", "require './config/environment'; print Rails.application.config.eager_load, ' ', Rails.version"]
+    expectedOutput: ['^true 8\.1\.4$']
+  - name: the logrotate configuration parses (debug mode, nothing is rotated)
+    command: /usr/sbin/logrotate
+    args: ["--debug", "--state", "/tmp/logrotate.status", "/etc/logrotate.conf"]
+    exitCode: 0

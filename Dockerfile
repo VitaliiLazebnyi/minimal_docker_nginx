@@ -1,70 +1,88 @@
 # ==========================================
 # STAGE 1: Builder Environment
 # ==========================================
-FROM ruby:4.0.2-alpine AS builder
+# Pinned by digest; Dependabot (docker) proposes updates and `rake outdated` fails when the tag has moved
+# or a newer Ruby/Alpine release exists (see script/outdated_holds.yml).
+FROM ruby:4.0.9-alpine3.24@sha256:d0c5befc0864d31c6219321c8d79de2941d1bc31c41505d9c9289c6192c36d60 AS builder
 
-# 1. Install toolchain & dependencies for passenger compilation
-RUN apk add --no-cache gcc g++ make linux-headers rust cargo patch musl-dev \
-    tzdata sqlite-dev yaml-dev pcre-dev curl-dev libxml2-dev libxslt-dev curl bash \
-    logrotate perl tar procps procps
+# Every RUN below uses pipes; without pipefail a failing producer would go unnoticed.
+SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
+
+# Must match the passenger entry of rails_app/Gemfile.lock (checked by `rake outdated`).
+ARG PASSENGER_VERSION=6.2.1
+# The unprivileged account nginx, Passenger and the application run as.
+ARG APP_UID=10001
+
+# 1. Install toolchain & dependencies for Ruby, Passenger and nginx compilation
+RUN apk add --no-cache gcc g++ make linux-headers patch musl-dev coreutils xz \
+    tzdata sqlite-dev yaml-dev pcre2-dev curl-dev libxml2-dev libxslt-dev curl bash \
+    openssl-dev zlib-dev libffi-dev readline-dev gdbm-dev ncurses-dev \
+    logrotate perl tar procps && \
+    adduser -D -H -h /app -s /sbin/nologin -u "${APP_UID}" app
 
 # 2. Rails Application Setup
 ENV RAILS_ENV="production" \
     BUNDLE_PATH="/usr/local/bundle" \
-    BUNDLE_WITHOUT="development:test"
-
-COPY rails_app /app
-RUN chown -R nobody:nobody /app
-WORKDIR /app
+    BUNDLE_WITHOUT="development:test" \
+    BUNDLE_FROZEN="true"
 
 ENV OPTIMIZATION_FLAGS="-Ofast -ffast-math -march=native -mtune=native -flto -fomit-frame-pointer -pipe"
-ENV CFLAGS="${OPTIMIZATION_FLAGS}"
-ENV CXXFLAGS="${OPTIMIZATION_FLAGS}"
-ENV RUBY_CFLAGS="${OPTIMIZATION_FLAGS}"
-ENV RUBY_CXXFLAGS="${OPTIMIZATION_FLAGS}"
+ENV CFLAGS="${OPTIMIZATION_FLAGS}" \
+    CXXFLAGS="${OPTIMIZATION_FLAGS}" \
+    RUBY_CFLAGS="${OPTIMIZATION_FLAGS}" \
+    RUBY_CXXFLAGS="${OPTIMIZATION_FLAGS}"
 
-# 2.5: Physically Re-compile the Ruby Virtual Machine Engine iteratively over the generic binary
-RUN apk add --no-cache curl tar build-base linux-headers coreutils yaml-dev openssl-dev zlib-dev libffi-dev readline-dev gdbm-dev ncurses-dev && \
-    curl -sL https://cache.ruby-lang.org/pub/ruby/4.0/ruby-4.0.2.tar.gz | tar -xz && \
-    cd ruby-4.0.2 && \
+# 2.5: Re-compile the Ruby VM with the optimization flags, from the exact source tarball of the base image
+# (RUBY_DOWNLOAD_URL and RUBY_DOWNLOAD_SHA256 are set by the official ruby image), verified before use.
+WORKDIR /usr/src/ruby
+RUN curl --fail --silent --show-error --location --output ruby.tar.xz "${RUBY_DOWNLOAD_URL}" && \
+    echo "${RUBY_DOWNLOAD_SHA256}  ruby.tar.xz" | sha256sum -c - && \
+    tar -xJf ruby.tar.xz --strip-components=1 && \
+    rm ruby.tar.xz && \
     ./configure --disable-install-doc --enable-shared && \
-    make -j$(nproc) install && \
-    cd .. && rm -rf ruby-4.0.2
+    make -j"$(nproc)" install
+WORKDIR /
+RUN rm -rf /usr/src/ruby
 
+COPY rails_app /app
+WORKDIR /app
 RUN bundle config set --global build.nokogiri "--with-cflags='${OPTIMIZATION_FLAGS}' --with-cxxflags='${OPTIMIZATION_FLAGS}'" && \
     bundle config set --global build.sqlite3 "--with-cflags='${OPTIMIZATION_FLAGS}' --with-cxxflags='${OPTIMIZATION_FLAGS}'" && \
-    bundle install && rm -rf /usr/local/bundle/cache /app/vendor
+    bundle install && rm -rf /usr/local/bundle/cache /app/vendor && \
+    mkdir -p /app/tmp /app/log /app/storage && \
+    chown -R app:app /app/tmp /app/log /app/storage
 
-# 3. Build Passenger & Nginx
-RUN gem install passenger --no-document
-RUN passenger-install-nginx-module --auto --auto-download --prefix=/opt/nginx --languages ruby --extra-configure-flags="--with-cc-opt='${OPTIMIZATION_FLAGS}' --with-ld-opt='-Wl,-flto'"
+# 3. Build Passenger & Nginx (Passenger downloads the nginx release it supports and verifies its SHA-256)
+RUN gem install passenger --version "${PASSENGER_VERSION}" --no-document && \
+    passenger-install-nginx-module --auto --auto-download --prefix=/opt/nginx --languages ruby \
+      --extra-configure-flags="--with-cc-opt='${OPTIMIZATION_FLAGS}' --with-ld-opt='-Wl,-flto'"
 
 # 4. Configuration Layer
 COPY docker_config/nginx.conf.template /tmp/nginx.conf.template
-RUN PASSENGER_ROOT=$(passenger-config --root) && \
-    sed "s|REPLACE_ME_PASSENGER_ROOT|$PASSENGER_ROOT|g" /tmp/nginx.conf.template > /opt/nginx/conf/nginx.conf
-
 COPY docker_config/logrotate.conf /etc/logrotate.conf
 COPY docker_config/entrypoint.sh /bin/entrypoint.sh
-RUN chmod +x /bin/entrypoint.sh && chmod 644 /etc/logrotate.conf
+RUN PASSENGER_ROOT=$(passenger-config --root) && \
+    sed "s|REPLACE_ME_PASSENGER_ROOT|$PASSENGER_ROOT|g" /tmp/nginx.conf.template > /opt/nginx/conf/nginx.conf && \
+    chmod 755 /bin/entrypoint.sh && chmod 644 /etc/logrotate.conf /opt/nginx/conf/nginx.conf && \
+    # Runtime directories: every log under /var/logs (REQ-LOG-001), owned by the unprivileged account.
+    mkdir -p /my_runtime/var/logs/nginx /my_runtime/var/logs/passenger /my_runtime/tmp/nginx /my_runtime/tmp/passenger && \
+    chown -R app:app /my_runtime/var/logs /my_runtime/tmp/nginx /my_runtime/tmp/passenger && \
+    chmod 1777 /my_runtime/tmp
 
 # 5. Hyper-Minimization Sequence (DOCKER_MINIMIZATION.md)
-RUN find /usr/local -type f -name '*.so*' -exec strip --strip-unneeded {} + && \
-    strip --strip-unneeded /usr/local/bin/ruby || true && \
-    strip --strip-unneeded /opt/nginx/sbin/nginx || true
-
-# Purge C-Compiler Metadata directories
-RUN rm -rf /usr/local/lib/pkgconfig /usr/local/include/ruby-*
-
-# Nuke Default Development Gems built into Ruby
-RUN for gem in minitest test-unit power_assert rbs typeprof debug irb reline syntax_suggest error_highlight rdoc racc; do \
-        rm -rf /usr/local/lib/ruby/gems/*/gems/${gem}-* ; \
-        rm -f /usr/local/lib/ruby/gems/*/specifications/${gem}-*.gemspec ; \
-        rm -f /usr/local/lib/ruby/gems/*/specifications/default/${gem}-*.gemspec ; \
-    done
-
-# The "Dirty Secret" of RubyGems (C/C++ Compiler Trash)
-RUN find /usr/local/lib/ruby/gems/ /usr/local/bundle/ /opt/nginx/ -type f \( -name "*.c" -o -name "*.h" -o -name "*.o" -o -name "*.cpp" -o -name "*.hpp" -o -name "*.cc" -o -name "*.cxx" -o -name "Makefile" \) -delete
+# strip fails on files that are not ELF objects (linker scripts named *.so*); those are left as they are.
+RUN find /usr/local -type f -name '*.so*' -exec strip --strip-unneeded {} + || true && \
+    strip --strip-unneeded /usr/local/bin/ruby /opt/nginx/sbin/nginx && \
+    # Purge C-Compiler Metadata directories
+    rm -rf /usr/local/lib/pkgconfig /usr/local/include/ruby-* && \
+    # Nuke Default Development Gems built into Ruby
+    for gem in minitest test-unit power_assert rbs typeprof debug irb reline syntax_suggest error_highlight rdoc racc; do \
+        rm -rf /usr/local/lib/ruby/gems/*/gems/"${gem}"-* ; \
+        rm -f /usr/local/lib/ruby/gems/*/specifications/"${gem}"-*.gemspec ; \
+        rm -f /usr/local/lib/ruby/gems/*/specifications/default/"${gem}"-*.gemspec ; \
+    done && \
+    # The "Dirty Secret" of RubyGems (C/C++ Compiler Trash)
+    find /usr/local/lib/ruby/gems/ /usr/local/bundle/ /opt/nginx/ -type f \( -name "*.c" -o -name "*.h" -o -name "*.o" -o -name "*.cpp" -o -name "*.hpp" -o -name "*.cc" -o -name "*.cxx" -o -name "Makefile" \) -delete
 
 # The "Absolute Minimum" Document/Test Purge (User Request)
 RUN find /usr/local/bundle/ruby/*/gems/ -maxdepth 2 -type d \( -name test -o -name tests -o -name spec -o -name features -o -name benchmark -o -name examples -o -name doc -o -name docs -o -name sample -o -name samples -o -name man -o -name manual -o -name templates \) -exec rm -rf {} + || true && \
@@ -76,8 +94,8 @@ RUN find /usr/local/bundle/ruby/*/gems/ -maxdepth 2 -type d \( -name test -o -na
     find /usr/local -name "*.la" -delete || true && \
     find /usr/local -type d -name "include" -exec rm -rf {} + || true && \
     find /usr/local -type d -name ".github" -exec rm -rf {} + || true && \
-    rm -rf /opt/nginx/html /opt/nginx/logs || true && \
-    rm -f /opt/nginx/conf/*.default /opt/nginx/conf/fastcgi* /opt/nginx/conf/scgi* /opt/nginx/conf/uwsgi* /opt/nginx/conf/koi* /opt/nginx/conf/win* || true && \
+    rm -rf /opt/nginx/html /opt/nginx/logs && \
+    rm -f /opt/nginx/conf/*.default /opt/nginx/conf/fastcgi* /opt/nginx/conf/scgi* /opt/nginx/conf/uwsgi* /opt/nginx/conf/koi* /opt/nginx/conf/win* && \
     ln -s /var/logs/nginx /opt/nginx/logs && \
     for ext in "*.md" "*.txt" "*.log" "README*" "*LICENSE*" "*GPL*" "COPYING*" "BSDL" "CHANGELOG*" "CHANGES*" "CONTRIBUTING*" "CONTRIBUTORS*" "Rakefile*" "Makefile*" "BSDmakefile" "mkmf.log" "USAGE*" "TODO*" "THANKS*" ".document" ".gitignore" "Gemfile" "*.java" ".travis.yml" ".yardopts" "*.out"; do \
         find /usr/local/bundle -iname "$ext" -exec rm -f {} + || true; \
@@ -132,29 +150,27 @@ RUN find /usr/local/bundle/ruby/*/gems/ -maxdepth 2 -type d \( -name test -o -na
            /usr/local/bundle/ruby/*/doc \
            /usr/local/lib/ruby/gems/*/doc \
            /usr/local/share \
-           /app/.git /app/coverage /app/tmp/* /app/log/* /app/.rspec /app/test /app/spec || true && \
+           /app/.git /app/coverage /app/tmp/* /app/log/* /app/.rspec /app/test /app/spec && \
     find /usr/local/bundle/ -type d \( -name "cxx_supportlib" -o -name "ruby_native_extension" -o -name "apache2_module" -o -name "nodejs_supportlib" -o -name "nginx_module" -o -name "schema_printer" -o -name "agent" -o -name "download_cache" -o -name "libev" -o -name "libuv" \) -exec rm -rf {} + || true
 
 # 6. Paranoid Hyper-Minimization (The "Scratch Copy" Dependencies)
 # Extract exact physical paths of all dynamic OS libraries for passenger, ruby, nginx, and required utils
-# We also include dynamic libraries loaded by ld-musl, which ldd surfaces
+# (ldd prints nothing for files that are not dynamic ELF objects).
 RUN mkdir /my_dependencies && \
-    for lib in $(find /usr/local /opt/nginx /bin/busybox /bin/ps /usr/sbin/logrotate -type f \( -executable -o -name "*.so" \)); do \
-        ldd $lib 2>/dev/null | awk '{print $3}' | grep "^/"; \
-    done | sort -u | xargs -I '{}' cp '{}' /my_dependencies/ || true
+    find /usr/local /opt/nginx /bin/busybox /bin/ps /usr/sbin/logrotate -type f \( -executable -o -name "*.so" \) \
+      -exec sh -c 'for file; do ldd "$file" 2>/dev/null || true; done' sh {} + \
+      | awk '{print $3}' | grep "^/" | sort -u | xargs -r -I '{}' cp '{}' /my_dependencies/
 
-# Create symbolic links to busybox for critical scratch shell tools
-# We also need /lib/ld-musl-aarch64.so.1 (or x86_64) to execute binaries; it's a symlink in Alpine usually.
-# LDD resolves it to absolute physical object. Let's explicitly copy /lib/ld-musl-*.so.1
+# Symbolic links to busybox for the shell tools the entrypoint, logrotate, Passenger and the HEALTHCHECK use.
+# /lib/ld-musl-*.so.1 is needed to execute any binary; it is copied explicitly.
 RUN mkdir -p /my_bin /my_sbin /my_lib /my_usr_bin && \
     cp /bin/busybox /my_bin/ && \
     for cmd in sh rm mv gzip mkdir chown chmod ls kill sleep cat echo date false true grep id uname env wget; do \
-        ln -s /bin/busybox /my_bin/$cmd || true; \
+        ln -s /bin/busybox "/my_bin/$cmd"; \
     done && \
-    ln -s /bin/busybox /my_sbin/crond || true && \
-    cp /bin/ps /my_bin/ps || true && \
+    cp /bin/ps /my_bin/ps && \
     cp /usr/sbin/logrotate /my_sbin/ && \
-    cp /lib/ld-musl-*.so.1 /my_lib/ || echo "ld-musl copy failed"
+    cp /lib/ld-musl-*.so.1 /my_lib/
 
 # ==========================================
 # STAGE 2: Ultra-Minimal Production Image
@@ -168,40 +184,36 @@ ENV TZ=UTC \
     BUNDLE_WITHOUT="development:test" \
     PATH="/usr/local/bin:/opt/nginx/sbin:/bin:/sbin:/usr/bin:/usr/sbin"
 
-# Important missing musl loader symlink workaround if placed in /lib
-# We just copy the folders we built directly.
 COPY --from=builder /my_dependencies /lib
 COPY --from=builder /my_dependencies /usr/lib
 COPY --from=builder /my_lib/ /lib/
 COPY --from=builder /my_bin /bin
 COPY --from=builder /my_sbin /usr/sbin
 COPY --from=builder /my_usr_bin /usr/bin
+# Core system properties Passenger relies upon (it looks the running account up by uid)
 COPY --from=builder /etc/passwd /etc/group /etc/
 COPY --from=builder /usr/share/zoneinfo /usr/share/zoneinfo
+COPY --from=builder /usr/share/zoneinfo/UTC /etc/localtime
 
-# 2. Ruby Environment
+# Ruby Environment
 COPY --from=builder /usr/local /usr/local
-COPY --from=builder /usr/local/bundle /usr/local/bundle
 COPY --from=builder /opt/nginx /opt/nginx
 
 COPY --from=builder /app /app
 COPY --from=builder /etc/logrotate.conf /etc/logrotate.conf
 COPY --from=builder /bin/entrypoint.sh /bin/entrypoint.sh
-COPY --from=builder /usr/share/zoneinfo/UTC /etc/localtime
+# /var/logs/{nginx,passenger}, /tmp (sticky, world-writable) and its nginx/Passenger directories
+COPY --from=builder /my_runtime/ /
 
-# Core system properties passenger agent relies upon
-COPY --from=builder /etc/passwd /etc/passwd
-COPY --from=builder /etc/group /etc/group
-
-# Working directory
 WORKDIR /app
 
-# Expose port
+# nginx, Passenger and the application run unprivileged. Port 80 stays bindable because Docker sets
+# net.ipv4.ip_unprivileged_port_start=0 in every container network namespace (see README.md).
+USER 10001:10001
+
 EXPOSE 80
 
-# The Docker HEALTHCHECK instruction
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD ["/bin/sh", "-c", "env /bin/busybox wget -q -O - http://localhost/health | /bin/busybox grep OK || exit 1"]
 
-# The process execution sequence
 ENTRYPOINT ["/bin/sh", "/bin/entrypoint.sh"]
