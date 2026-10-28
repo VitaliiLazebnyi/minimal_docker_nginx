@@ -49,8 +49,8 @@ bundle exec rake outdated   # every dependency at its newest release, except the
 Mutant parses the code with the `parser` gem, which only has a grammar for Ruby 3.3: run it on the newest Ruby 3.3
 (CI does) to avoid the `parser/current` warning.
 
-`rake outdated` (`script/outdated.rb`) checks the gems and Bundler, every pinned Ruby, the nginx release Passenger
-builds, every Docker image (newest tag, and the digest the tag points to), every GitHub Action (newest release, pinned
+`rake outdated` (`script/outdated.rb`) checks the gems, Bundler and RubyGems, every pinned Ruby, the nginx release the
+image builds, every Docker image (newest tag, and the digest the tag points to), every GitHub Action (newest release, pinned
 to its commit), and the Python and npm tools. A dependency that cannot be updated is listed, with the reason, in
 `script/outdated_holds.yml`; the check also fails when a hold is no longer needed.
 

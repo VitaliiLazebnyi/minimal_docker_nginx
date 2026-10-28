@@ -8,8 +8,14 @@ FROM ruby:4.0.9-alpine3.24@sha256:d0c5befc0864d31c6219321c8d79de2941d1bc31c41505
 # Every RUN below uses pipes; without pipefail a failing producer would go unnoticed.
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
+# The newest RubyGems, installed over the one Ruby ships with (checked by `rake outdated`).
+ARG RUBYGEMS_VERSION=4.0.23
 # Must match the passenger entry of rails_app/Gemfile.lock (checked by `rake outdated`).
 ARG PASSENGER_VERSION=6.2.1
+# The newest nginx release (mainline; checked by `rake outdated`). The SHA-256 is the one the FreeBSD ports tree
+# records for this tarball (www/nginx-devel/distinfo); Passenger itself only carries a checksum for 1.30.6.
+ARG NGINX_VERSION=1.31.8
+ARG NGINX_SHA256=0652b760b3b772d2ec17b47c2fc15d9a95e6fe35cd5b877eadc1a62d9bc75af1
 # The unprivileged account nginx, Passenger and the application run as.
 ARG APP_UID=10001
 
@@ -40,7 +46,8 @@ RUN curl --fail --silent --show-error --location --output ruby.tar.xz "${RUBY_DO
     tar -xJf ruby.tar.xz --strip-components=1 && \
     rm ruby.tar.xz && \
     ./configure --disable-install-doc --enable-shared && \
-    make -j"$(nproc)" install
+    make -j"$(nproc)" install && \
+    gem update --system "${RUBYGEMS_VERSION}" --no-document
 WORKDIR /
 RUN rm -rf /usr/src/ruby
 
@@ -52,10 +59,18 @@ RUN bundle config set --global build.nokogiri "--with-cflags='${OPTIMIZATION_FLA
     mkdir -p /app/tmp /app/log /app/storage && \
     chown -R app:app /app/tmp /app/log /app/storage
 
-# 3. Build Passenger & Nginx (Passenger downloads the nginx release it supports and verifies its SHA-256)
-RUN gem install passenger --version "${PASSENGER_VERSION}" --no-document && \
-    passenger-install-nginx-module --auto --auto-download --prefix=/opt/nginx --languages ruby \
+# 3. Build Passenger & Nginx from the verified nginx source tarball
+WORKDIR /usr/src/nginx
+RUN curl --fail --silent --show-error --location --output nginx.tar.gz \
+      "https://nginx.org/download/nginx-${NGINX_VERSION}.tar.gz" && \
+    echo "${NGINX_SHA256}  nginx.tar.gz" | sha256sum -c - && \
+    tar -xzf nginx.tar.gz --strip-components=1 && \
+    rm nginx.tar.gz && \
+    gem install passenger --version "${PASSENGER_VERSION}" --no-document && \
+    passenger-install-nginx-module --auto --nginx-source-dir=/usr/src/nginx --prefix=/opt/nginx --languages ruby \
       --extra-configure-flags="--with-cc-opt='${OPTIMIZATION_FLAGS}' --with-ld-opt='-Wl,-flto'"
+WORKDIR /app
+RUN rm -rf /usr/src/nginx
 
 # 4. Configuration Layer
 COPY docker_config/nginx.conf.template /tmp/nginx.conf.template
