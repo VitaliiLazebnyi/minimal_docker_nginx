@@ -3,7 +3,14 @@
 source 'https://rubygems.org'
 
 gem 'passenger', '~> 6.2'
-gem 'rails', '~> 8.1.4'
+# Only the frameworks config/application.rb loads, instead of the `rails` meta-gem (which also installs Action
+# Cable, Action Mailer, Action Mailbox, Action Text, Active Job and Active Storage, none of which the API uses).
+gem 'actionpack', '~> 8.1.4'
+gem 'actionview', '~> 8.1.4'
+gem 'activemodel', '~> 8.1.4'
+gem 'activerecord', '~> 8.1.4'
+gem 'activesupport', '~> 8.1.4'
+gem 'railties', '~> 8.1.4'
 # Runtime half of the Sorbet signatures in app/ (`extend T::Sig`, `sig { ... }`).
 gem 'sorbet-runtime', '~> 0.6'
 gem 'sqlite3', '~> 2.10'

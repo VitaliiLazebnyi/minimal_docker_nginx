@@ -113,6 +113,11 @@ jobs:
       with:
         fail-on-severity: low
         comment-summary-in-pr: on-failure
+        # OpenSSF Scorecards stay in the summary, but a low upstream score is not a defect of this repository
+        # and cannot be fixed here: the remaining low-scoring packages are transitive dependencies of RuboCop
+        # (ruby-progressbar) and markdownlint (micromark's character-entity packages). The action would print a
+        # warning annotation for every package below the threshold (default 3); 0 reports the scores only.
+        warn-on-openssf-scorecard-level: 0
 
   gitleaks:
     name: Secret scanning (gitleaks)

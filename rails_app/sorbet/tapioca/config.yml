@@ -1,16 +1,5 @@
 gem:
-  # Frameworks and tools that config/application.rb never loads (Rails installs them as dependencies of the
-  # `rails` gem). Their RBIs, and their central-repository annotations (removed from sorbet/rbi/annotations),
-  # refer to constants that only exist once those frameworks are loaded, so they are not generated.
   exclude:
-  - actioncable
-  - actionmailbox
-  - actionmailer
-  - actiontext
-  - activejob
-  - activestorage
-  - globalid
-  - mail
   # Reek and the dry-rb gems it depends on are development tools that no checked file refers to. Compiling
   # their RBIs touches constants that dry-rb has deprecated, which prints deprecation notices.
   - dry-configurable

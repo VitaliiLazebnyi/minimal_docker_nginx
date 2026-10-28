@@ -8,10 +8,6 @@ gems:
     blocked_by:
       - 'rspec-expectations 3.13.5: diff-lcs >= 1.2.0, < 2.0'
       - 'rspec-mocks 3.13.8: diff-lcs >= 1.2.0, < 2.0'
-  marcel:
-    newest: 2.1.0
-    blocked_by:
-      - 'activestorage 8.1.4: marcel ~> 1.0'
   prism:
     newest: 2.1.0
     blocked_by:
