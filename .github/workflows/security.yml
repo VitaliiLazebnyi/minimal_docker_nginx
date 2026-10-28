@@ -69,7 +69,7 @@ jobs:
     - run: bundle exec rake brakeman
 
   # Vulnerabilities in every lockfile of the repository (Gemfile.lock, tools/requirements.txt,
-  # package-lock.json) and secrets in the working tree.
+  # package-lock.json; development dependencies included) and secrets in the working tree.
   trivy-fs:
     name: Trivy (repository)
     runs-on: ubuntu-26.04
@@ -80,10 +80,21 @@ jobs:
       with:
         persist-credentials: false
 
+    # Trivy reads the licenses of the Python packages from an installed environment (it warns without one),
+    # so the tools are installed and Trivy runs on the runner: its binary is copied out of the pinned image.
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: 3.x
+    - name: Install the Python tools (tools/requirements.txt)
+      run: python -m pip install --quiet --disable-pip-version-check --require-hashes -r tools/requirements.txt
+    - name: Install Trivy from its pinned image
+      run: |
+        container=$(docker create "$TRIVY_IMAGE")
+        docker cp "$container:/usr/local/bin/trivy" "$RUNNER_TEMP/trivy"
+        docker rm "$container"
     - name: Scan the lockfiles and the working tree
       run: >-
-        docker run --rm --volume "$PWD:/repository:ro" "$TRIVY_IMAGE"
-        filesystem --scanners vuln,secret --exit-code 1 --no-progress /repository
+        "$RUNNER_TEMP/trivy" filesystem --scanners vuln,secret --include-dev-deps --exit-code 1 --no-progress .
 
   # Requires the repository's Dependency graph to be enabled (Settings > Code security).
   dependency-review:

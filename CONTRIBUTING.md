@@ -97,5 +97,8 @@ script/forbidden_suppressions.sh
 - **Behavior is specified.** Every behavioral fix needs a regression test (a spec, a structure test or a smoke-test
   step), and every surviving mutant needs a test that kills it (or, when the mutation cannot change observable
   behavior, simpler code).
+- **Vulnerable transitive dependencies are forced to a fixed release.** `package.json` overrides `katex` (needed by
+  markdownlint-cli2 through `micromark-extension-math`, whose newest release still asks for `^0.16.0`) to its newest
+  release, which fixes CVE-2026-103923; `rake outdated` keeps overrides at the newest release too.
 - **Everything is pinned and current.** Docker images are pinned by digest, GitHub Actions by commit, Python tools by
   hash; `rake outdated` keeps them at their newest releases.
