@@ -7,22 +7,24 @@ set -euo pipefail
 image=${1:?usage: test/image/smoke_test.sh IMAGE}
 name="smoke-test-$$"
 
+# Prints the output of a diagnostic command; a failing diagnostic never stops the others.
+show() {
+  local title=$1
+  shift
+  echo "--- ${title}"
+  "$@" 2>&1 | tail -n 60 || echo "(exit status $?)"
+}
+
 fail() {
   printf '::error::%s\n' "$1"
-  echo '--- HEALTHCHECK results'
-  docker inspect --format '{{json .State.Health}}' "${name}" 2>&1
-  echo '--- GET /health from inside the container'
-  docker exec "${name}" /bin/busybox wget -O - http://127.0.0.1/health 2>&1 | tail -n 20
-  echo '--- GET /health from the host'
-  curl --silent --show-error --include --max-time 10 "${base}/health" 2>&1 | tail -n 20
-  echo '--- processes'
-  docker top "${name}" -o pid,uid,args 2>&1
-  echo '--- container output'
-  docker logs "${name}" 2>&1 | tail -n 50
-  echo '--- /var/logs/nginx/error.log'
-  docker exec "${name}" cat /var/logs/nginx/error.log 2>&1 | tail -n 50
-  echo '--- /var/logs/passenger/passenger.log'
-  docker exec "${name}" cat /var/logs/passenger/passenger.log 2>&1 | tail -n 50
+  show 'HEALTHCHECK results' docker inspect --format '{{json .State.Health}}' "${name}"
+  show 'GET /health from the host (with the error body)' \
+    curl --silent --show-error --include --max-time 10 "${base}/health"
+  show 'GET /health from inside the container' docker exec "${name}" /bin/busybox wget -O - http://127.0.0.1/health
+  show 'processes' docker top "${name}" -o pid,uid,args
+  show 'container output' docker logs "${name}"
+  show '/var/logs/nginx/error.log' docker exec "${name}" cat /var/logs/nginx/error.log
+  show '/var/logs/passenger/passenger.log' docker exec "${name}" cat /var/logs/passenger/passenger.log
   exit 1
 }
 
