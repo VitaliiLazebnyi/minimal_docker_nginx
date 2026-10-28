@@ -230,7 +230,9 @@ USER 10001:10001
 
 EXPOSE 80
 
+# 127.0.0.1, not localhost: nginx listens on IPv4, and BusyBox wget does not fall back to IPv4 when
+# localhost resolves to ::1 first.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-  CMD ["/bin/sh", "-c", "env /bin/busybox wget -q -O - http://localhost/health | /bin/busybox grep OK || exit 1"]
+  CMD ["/bin/sh", "-c", "env /bin/busybox wget -q -O - http://127.0.0.1/health | /bin/busybox grep OK || exit 1"]
 
 ENTRYPOINT ["/bin/sh", "/bin/entrypoint.sh"]

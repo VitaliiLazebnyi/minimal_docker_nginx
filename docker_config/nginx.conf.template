@@ -18,6 +18,11 @@ http {
     passenger_instance_registry_dir /tmp/passenger;
     # The default (<nginx prefix>/passenger_temp) is not writable by the unprivileged account.
     passenger_temp_path /tmp/nginx/passenger_temp;
+    # The image ships no CA certificates and has no business calling home: Passenger's daily security
+    # update check (which failed with an SSL error) and its anonymous telemetry are off. Vulnerabilities
+    # are tracked by the Trivy and Grype gates of CI instead.
+    passenger_disable_security_update_check on;
+    passenger_disable_anonymous_telemetry on;
 
     include /opt/nginx/conf/mime.types;
     access_log /var/logs/nginx/access.log;

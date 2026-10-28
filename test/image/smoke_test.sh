@@ -9,6 +9,14 @@ name="smoke-test-$$"
 
 fail() {
   printf '::error::%s\n' "$1"
+  echo '--- HEALTHCHECK results'
+  docker inspect --format '{{json .State.Health}}' "${name}" 2>&1
+  echo '--- GET /health from inside the container'
+  docker exec "${name}" /bin/busybox wget -O - http://127.0.0.1/health 2>&1 | tail -n 20
+  echo '--- GET /health from the host'
+  curl --silent --show-error --include --max-time 10 "${base}/health" 2>&1 | tail -n 20
+  echo '--- processes'
+  docker top "${name}" -o pid,uid,args 2>&1
   echo '--- container output'
   docker logs "${name}" 2>&1 | tail -n 50
   echo '--- /var/logs/nginx/error.log'
