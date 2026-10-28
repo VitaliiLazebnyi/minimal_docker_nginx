@@ -8,18 +8,25 @@ require_relative 'http'
 require_relative 'report'
 
 module Outdated
-  # The gems and Bundler of rails_app/, and the Passenger version the Dockerfile installs.
+  # The gems and Bundler of rails_app/, the RubyGems and Passenger versions the Dockerfile installs.
   class Bundle
     extend T::Sig
 
     OUTDATED_LINE = /^(\S+) \(newest ([^,\s]+), installed ([^,)\s]+)/
     private_constant :OUTDATED_LINE
 
-    # [name, newest, installed] of every gem `bundle outdated` reports.
+    # [name, newest, installed] of every gem `bundle outdated` reports; raises when it cannot check.
     # @return [Array<(String, String, String)>]
     sig { returns(T::Array[[String, String, String]]) }
     def self.outdated_gems
-      output, = Open3.capture2e('bundle', 'outdated', '--parseable', chdir: APP)
+      # `bundle outdated` refuses to run in deployment mode (which CI's setup-ruby configures); it only reads the
+      # lockfile and the gem index, so it runs with deployment and frozen mode off.
+      output, status = Open3.capture2e({ 'BUNDLE_DEPLOYMENT' => 'false', 'BUNDLE_FROZEN' => 'false' },
+                                       'bundle', 'outdated', '--parseable', chdir: APP)
+      # Exit status 1 only means that some gem is outdated; a killed process has no exit status.
+      code = status.exitstatus || 2
+      raise "bundle outdated failed (#{code}):\n#{output}" if code > 1
+
       output.scan(OUTDATED_LINE).map { |name, newest, installed| [name.to_s, newest.to_s, installed.to_s] }
     end
 
@@ -37,6 +44,7 @@ module Outdated
     def check
       check_gems
       check_bundler
+      check_rubygems
       check_passenger
     end
 
@@ -64,6 +72,14 @@ module Outdated
     def check_bundler
       newest = Document.string(Http.json('https://rubygems.org/api/v1/versions/bundler/latest.json'), ['version'])
       @report.compare('Bundler (Gemfile.lock, BUNDLED WITH)', @lockfile[/^BUNDLED WITH\n\s+(\S+)/, 1].to_s, newest)
+    end
+
+    sig { void }
+    def check_rubygems
+      newest = Document.string(Http.json('https://rubygems.org/api/v1/versions/rubygems-update/latest.json'),
+                               ['version'])
+      built = File.read(File.join(ROOT, 'Dockerfile'))[/^ARG RUBYGEMS_VERSION=(\S+)/, 1].to_s
+      @report.compare('RubyGems (Dockerfile ARG RUBYGEMS_VERSION)', built, newest)
     end
 
     sig { void }
