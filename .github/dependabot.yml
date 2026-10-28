@@ -1,0 +1,45 @@
+# Dependabot proposes every update; `rake outdated` (CI) fails while any dependency is outdated and not on the
+# documented hold list (script/outdated_holds.yml).
+version: 2
+updates:
+  - package-ecosystem: bundler
+    directory: "/rails_app"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      development-dependencies:
+        dependency-type: development
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+  - package-ecosystem: pip
+    directory: "/tools"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    groups:
+      linters:
+        patterns:
+          - "*"
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7

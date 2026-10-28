@@ -1,0 +1,83 @@
+name: Lint
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Workflows (actionlint, with ShellCheck on every run: block; zizmor, pedantic persona), shell scripts
+  # (ShellCheck with every optional check, .shellcheckrc), spelling (typos) and inline suppressions.
+  # The tools are installed from tools/requirements.txt, pinned with hashes.
+  lint:
+    name: actionlint, zizmor, ShellCheck, typos, suppressions
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: 3.x
+    - name: Install the linters
+      run: python -m pip install --quiet --disable-pip-version-check --require-hashes -r tools/requirements.txt
+    - name: actionlint
+      run: actionlint -color
+    - name: zizmor
+      env:
+        GH_TOKEN: ${{ github.token }} # online audits (known-vulnerable actions, impostor commits)
+      run: zizmor --persona pedantic --format plain .github/workflows
+    - name: ShellCheck
+      run: shellcheck script/*.sh test/image/*.sh docker_config/entrypoint.sh .githooks/pre-commit
+    - name: typos
+      run: typos
+    - name: Forbid inline suppressions
+      run: script/forbidden_suppressions.sh
+
+  markdownlint:
+    name: markdownlint
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: lts/*
+    - name: Install markdownlint-cli2 (package-lock.json)
+      run: npm ci --ignore-scripts --no-audit --no-fund
+    - name: markdownlint (every rule, .markdownlint-cli2.jsonc)
+      run: npx --no-install markdownlint-cli2
+
+  warning-gate:
+    name: Warning gate
+    if: ${{ !cancelled() }}
+    needs: [lint, markdownlint]
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: read # reads the logs of the other jobs of this run
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Fail on any warning or deprecation in the logs of this run
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GATE_JOB_NAME: Warning gate
+      run: script/warning_gate.sh

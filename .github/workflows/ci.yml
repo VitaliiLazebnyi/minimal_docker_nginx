@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+# Nothing is writable by default; every job re-declares the (read-only) permissions it needs.
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUBYOPT: -W:deprecated -W:performance
+
+defaults:
+  run:
+    working-directory: rails_app
+
+jobs:
+  test:
+    name: RSpec
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    env:
+      RUBYOPT: -w -W:deprecated -W:performance
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: true
+        working-directory: rails_app
+    - name: Check the Ruby version
+      run: ../script/check_ruby.sh
+    # SimpleCov enforces 100% line and branch coverage; warnings, deprecations, pending and skipped
+    # examples fail the run (spec/spec_helper.rb, config/environments/test.rb).
+    - name: RSpec with the 100% line + branch coverage gate
+      run: bundle exec rake spec
+
+  lint:
+    name: RuboCop
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: true
+        working-directory: rails_app
+    - name: Check the Ruby version
+      run: ../script/check_ruby.sh
+    - run: bundle exec rake rubocop
+
+  typecheck:
+    name: Sorbet
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: true
+        working-directory: rails_app
+    - name: Check the Ruby version
+      run: ../script/check_ruby.sh
+    - run: bundle exec rake typecheck
+
+  docs:
+    name: YARD (100% documented)
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: true
+        working-directory: rails_app
+    - name: Check the Ruby version
+      run: ../script/check_ruby.sh
+    - run: bundle exec rake yard
+
+  smells:
+    name: Reek and Flay
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: true
+        working-directory: rails_app
+    - name: Check the Ruby version
+      run: ../script/check_ruby.sh
+    - run: bundle exec rake reek flay
+
+  # Every dependency must be at its newest release, except those on the documented hold list
+  # (script/outdated_holds.yml): gems, Bundler, Ruby, nginx, Docker images, GitHub Actions, Python and npm tools.
+  outdated:
+    name: Outdated dependencies
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        bundler-cache: true
+        working-directory: rails_app
+    - name: Check the Ruby version
+      run: ../script/check_ruby.sh
+    - run: bundle exec rake outdated
+
+  warning-gate:
+    name: Warning gate
+    if: ${{ !cancelled() }}
+    needs: [test, lint, typecheck, docs, smells, outdated]
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: read # reads the logs of the other jobs of this run
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Fail on any warning or deprecation in the logs of this run
+      working-directory: .
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GATE_JOB_NAME: Warning gate
+      run: script/warning_gate.sh
