@@ -104,3 +104,9 @@ RSpec/DescribeMethod:
 Rails/RakeEnvironment:
   Exclude:
     - 'Rakefile'
+
+# script/ (inspected with this configuration by `rake rubocop`) is plain Ruby for the whole repository; it
+# does not load Rails, so the Rails cops (which suggest ActiveSupport methods) do not apply to it.
+Rails:
+  Exclude:
+    - '../script/**/*'

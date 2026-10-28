@@ -2,6 +2,7 @@
 # frozen_string_literal: true
 
 require_relative 'config/application'
+require 'active_support/core_ext/string/exclude'
 
 Rails.application.load_tasks
 
@@ -18,9 +19,14 @@ FULLY_DOCUMENTED = '100.00% documented'
 # Rails defines `spec` (rspec-rails) as the task that runs the suite; SimpleCov fails it below 100% line
 # and branch coverage, and spec/spec_helper.rb fails it on any warning, pending or skipped example.
 
-desc 'Run RuboCop'
+# Ruby code outside the application: the repository scripts (the outdated check), linted, documented and
+# smell-checked with the application's configuration.
+SCRIPTS = File.join(REPOSITORY_ROOT, 'script')
+
+desc 'Run RuboCop (the application and the repository scripts)'
 task :rubocop do
   sh 'bundle exec rubocop'
+  sh "bundle exec rubocop --config .rubocop.yml #{SCRIPTS}"
 end
 
 desc 'Fail on inline suppressions of any linter, scanner, type checker, warning or test'
@@ -30,26 +36,32 @@ end
 
 desc 'Generate the gem and DSL RBIs with Tapioca, then run the Sorbet type checker'
 task :typecheck do
-  sh 'bundle exec tapioca gem --quiet'
-  sh 'bundle exec tapioca dsl --quiet'
+  sh 'bundle exec tapioca gem'
+  sh 'bundle exec tapioca dsl'
   sh 'bundle exec srb tc'
 end
 
-desc 'Fail unless every public API object is documented'
+desc 'Fail unless every public API object (of the application and of the scripts) is documented'
 task :yard do
-  output = IO.popen(%w[bundle exec yard stats --list-undoc], err: %i[child out], &:read)
-  puts output
-  abort 'YARD: undocumented API objects found' if output.exclude?(FULLY_DOCUMENTED)
+  # The application reads .yardopts; YARD cannot be pointed at files outside its working directory, so the
+  # scripts are documented from their own directory with the same options.
+  { Dir.pwd => [], SCRIPTS => %w[--plugin sorbet --no-private --markup markdown outdated.rb outdated/**/*.rb] }
+    .each do |directory, files|
+      output = IO.popen(['bundle', 'exec', 'yard', 'stats', '--list-undoc', '--no-save', *files],
+                        chdir: directory, err: %i[child out], &:read)
+      puts output
+      abort "YARD: undocumented API objects found in #{directory}" if output.exclude?(FULLY_DOCUMENTED)
+    end
 end
 
 desc 'Fail on any code smell (default Reek configuration, no exclusions)'
 task :reek do
-  sh 'bundle exec reek app lib'
+  sh "bundle exec reek app lib #{SCRIPTS}"
 end
 
 desc 'Fail on any structural duplication'
 task :flay do
-  output = IO.popen(['bundle', 'exec', 'flay', '--mass', FLAY_MASS.to_s, 'app', 'lib'], &:read)
+  output = IO.popen(['bundle', 'exec', 'flay', '--mass', FLAY_MASS.to_s, 'app', 'lib', SCRIPTS], &:read)
   puts output
   abort 'Flay: duplicated code found' unless output.start_with?('Total score (lower is better) = 0')
 end

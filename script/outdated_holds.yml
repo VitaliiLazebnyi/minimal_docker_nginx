@@ -1,0 +1,35 @@
+# Dependencies that are deliberately NOT at their newest release, each with the reason.
+# `rake outdated` (script/outdated.rb) fails for any other outdated dependency (gems, Ruby, nginx, Bundler,
+# Docker images, GitHub Actions, Python and npm tools), and for a hold that is no longer needed.
+# Every gem entry quotes the exact blocking constraint (checked against rubygems.org on 2026-10-28).
+gems:
+  diff-lcs:
+    newest: 2.0.0
+    blocked_by:
+      - 'rspec-expectations 3.13.5: diff-lcs >= 1.2.0, < 2.0'
+      - 'rspec-mocks 3.13.8: diff-lcs >= 1.2.0, < 2.0'
+  marcel:
+    newest: 2.1.0
+    blocked_by:
+      - 'activestorage 8.1.4: marcel ~> 1.0'
+  prism:
+    newest: 2.1.0
+    blocked_by:
+      - 'rubocop-ast 1.50.0: prism ~> 1.7'
+      - 'flay 2.14.4: prism ~> 1.7'
+      - 'minitest 6.0.6: prism ~> 1.5'
+      - 'rbi 0.5.0: prism ~> 1.0'
+
+# Ruby release lines used besides the newest Ruby; each must still be at its newest patch release.
+ruby_lines:
+  '3.3':
+    used_by: .github/workflows/mutation.yml
+    reason: >-
+      Mutant parses the code with the `parser` gem, whose newest release (3.3.13.0) has no grammar for
+      Ruby 3.4 or 4.0 and warns on any other Ruby; mutation testing therefore runs on the newest Ruby 3.3.
+
+nginx:
+  newest: 1.31.8
+  reason: >-
+    1.31.x is the mainline branch. Passenger 6.2.1 (the newest release) builds nginx 1.30.6, the newest stable
+    release, and verifies the SHA-256 of that tarball; it has no checksum for any other nginx version.

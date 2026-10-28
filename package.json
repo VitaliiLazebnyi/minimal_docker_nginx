@@ -1,0 +1,9 @@
+{
+  "name": "minimal-docker-nginx-tooling",
+  "private": true,
+  "description": "Markdown linting for this repository (npm ci && npx markdownlint-cli2).",
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "markdownlint-cli2": "0.24.0"
+  }
+}

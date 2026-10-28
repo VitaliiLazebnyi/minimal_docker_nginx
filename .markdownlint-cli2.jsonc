@@ -1,0 +1,12 @@
+{
+  // Every rule of markdownlint is enabled; there are no inline <!-- markdownlint-disable --> comments.
+  "config": {
+    "default": true,
+    // Prose and tables are wrapped at the same width as the code (RuboCop Layout/LineLength).
+    "MD013": { "line_length": 120, "tables": false },
+    // Lists use dashes everywhere.
+    "MD004": { "style": "dash" }
+  },
+  "globs": ["**/*.md"],
+  "ignores": ["node_modules/**", "rails_app/vendor/**", "rails_app/coverage/**"]
+}

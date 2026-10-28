@@ -21,5 +21,8 @@ gem:
   - dry-schema
   - dry-types
   - reek
+  # RDoc (a dependency of the development tools) redefines classes that Sorbet's own payload declares with
+  # another superclass; no checked file uses RDoc, so its RBI is not generated instead of suppressing the error.
+  - rdoc
 dsl:
   exclude: []

@@ -1,0 +1,5 @@
+# typos (https://github.com/crate-ci/typos) spell-checks every tracked file. Words listed here are correct
+# in this repository; there are no inline `typos: ignore` markers.
+[default.extend-words]
+# RSpec's method for a skipped example group (named by script/forbidden_suppressions.sh, which forbids it).
+xdescribe = "xdescribe"
