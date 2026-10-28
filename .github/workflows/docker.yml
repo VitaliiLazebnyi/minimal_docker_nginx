@@ -63,7 +63,8 @@ jobs:
     - name: Identify the CPU model
       id: cpu
       run: echo "model=$(grep -m 1 '^model name' /proc/cpuinfo | sha256sum | cut -c 1-16)" >> "$GITHUB_OUTPUT"
-    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: cache
       with:
         path: ${{ runner.temp }}/buildx-cache
         key: image-${{ steps.cpu.outputs.model }}-${{ hashFiles('Dockerfile', '.dockerignore', 'docker_config/**', 'rails_app/**') }}
@@ -85,7 +86,14 @@ jobs:
         fi
         rm -rf "$RUNNER_TEMP/buildx-cache"
         mv "$RUNNER_TEMP/buildx-cache-new" "$RUNNER_TEMP/buildx-cache"
-        docker image ls "$IMAGE"
+        docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}' "$IMAGE"
+    # Saved as soon as the build succeeds (not at the end of the job), so a failing test or scan does not cost
+    # the next run a full rebuild.
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: steps.cache.outputs.cache-hit != 'true'
+      with:
+        path: ${{ runner.temp }}/buildx-cache
+        key: ${{ steps.cache.outputs.cache-primary-key }}
     - name: Export the image and list its files
       run: |
         mkdir -p "$RUNNER_TEMP/reports"

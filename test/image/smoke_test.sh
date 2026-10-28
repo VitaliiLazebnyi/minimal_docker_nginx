@@ -49,8 +49,8 @@ server=$(printf '%s\n' "${headers}" | tr -d '\r' | sed -n 's/^[Ss]erver: //p')
 [[ "${server}" == nginx ]] || fail "the Server header discloses more than the product name: ${server}"
 echo "Server header: ${server}"
 
-processes=$(docker top "${name}" -o uid,args)
-not_app=$(printf '%s\n' "${processes}" | awk 'NR > 1 && $1 != 10001')
+processes=$(docker top "${name}" -o pid,uid,args)
+not_app=$(printf '%s\n' "${processes}" | awk 'NR > 1 && $2 != 10001')
 [[ -z "${not_app}" ]] || fail "processes not running as uid 10001:
 ${not_app}"
 echo 'every process runs as uid 10001'
