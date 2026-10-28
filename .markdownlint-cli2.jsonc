@@ -1,5 +1,5 @@
 {
-  // Every rule of markdownlint is enabled; there are no inline <!-- markdownlint-disable --> comments.
+  // Every rule of markdownlint is enabled, and no rule is switched off inline in a Markdown file.
   "config": {
     "default": true,
     // Prose and tables are wrapped at the same width as the code (RuboCop Layout/LineLength).

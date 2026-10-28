@@ -1,4 +1,4 @@
-# Every finding fails the build (info and style included). There are no inline `# hadolint ignore` comments.
+# Every finding fails the build (info and style included). No rule is switched off inline in the Dockerfile.
 failure-threshold: info
 ignored:
   # DL3018 (pin versions in `apk add`): the base image is pinned by digest, but Alpine's repositories keep

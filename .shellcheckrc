@@ -1,2 +1,2 @@
-# Every optional check is enabled; there are no `# shellcheck disable` comments (see CONTRIBUTING.md).
+# Every optional check is enabled, and no check is switched off inline (see CONTRIBUTING.md).
 enable=all
