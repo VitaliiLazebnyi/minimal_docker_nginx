@@ -25,6 +25,7 @@ curl http://localhost:8080/health   # {"status":"OK"}
 - nginx, Passenger and the application run as the unprivileged user `app` (uid 10001). nginx still listens on port 80:
   Docker sets `net.ipv4.ip_unprivileged_port_start=0` in every container. On a runtime that does not (for example a
   Kubernetes pod without that sysctl), set it in the pod's `securityContext.sysctls`.
+- The database is a SQLite file under `/app/storage`, configured by `DATABASE_URL` (mount a volume there to keep it).
 - Set `SECRET_KEY_BASE` (for example `--env SECRET_KEY_BASE=$(openssl rand -hex 64)`) when signed or encrypted data
   must survive a restart; without it, each container generates its own at start.
 - Every log is written under `/var/logs` (nginx, Passenger, and `logrotate.log`); logs are rotated every day at

@@ -199,6 +199,7 @@ ENV TZ=UTC \
     BUNDLE_PATH="/usr/local/bundle" \
     GEM_HOME="/usr/local/bundle" \
     BUNDLE_WITHOUT="development:test" \
+    DATABASE_URL="sqlite3:storage/production.sqlite3?max_connections=5&timeout=5000" \
     PATH="/usr/local/bin:/opt/nginx/sbin:/bin:/sbin:/usr/bin:/usr/sbin"
 
 COPY --from=builder /my_dependencies /lib

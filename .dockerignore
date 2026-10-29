@@ -13,3 +13,9 @@ rails_app/sorbet
 rails_app/spec
 rails_app/storage/*
 rails_app/tmp/*
+# The image configures its database with DATABASE_URL (Dockerfile) instead of config/database.yml, which only
+# development and test use; the encrypted credentials are useless without their master key, which is never
+# committed (the image generates SECRET_KEY_BASE instead, see docker_config/entrypoint.sh).
+rails_app/config/database.yml
+rails_app/config/credentials.yml.enc
+rails_app/config/master.key

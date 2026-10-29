@@ -12,6 +12,8 @@ metadataTest:
       value: UTC
     - key: RAILS_ENV
       value: production
+    - key: DATABASE_URL
+      value: 'sqlite3:storage/production.sqlite3?max_connections=5&timeout=5000'
 
 fileExistenceTests:
   - name: nginx binary
@@ -62,6 +64,13 @@ fileExistenceTests:
   - name: no application specs
     path: /app/spec
     shouldExist: false
+  # The database is configured by DATABASE_URL; no configuration or credentials file is shipped (Dockle CIS-DI-0010).
+  - name: no database.yml
+    path: /app/config/database.yml
+    shouldExist: false
+  - name: no encrypted credentials (their master key is never in the image)
+    path: /app/config/credentials.yml.enc
+    shouldExist: false
 
 fileContentTests:
   - name: the application account exists (Passenger looks it up by uid)
@@ -93,6 +102,15 @@ commandTests:
     args: ["-e", "require './config/environment'; print Rails.application.config.eager_load, ' ', Rails.version"]
     expectedOutput: ['^true 8\.1\.4$']
     # Nothing on stderr either: no Bundler notice about an unwritable home directory, no warning.
+    excludedError: ['.']
+  # Regression: production had no database; the first query raised.
+  - name: the application queries its production database
+    command: /usr/local/bin/ruby
+    args: ["-e", "require './config/environment'; print ActiveRecord::Base.connection.select_value('SELECT 40 + 2')"]
+    envVars:
+      - key: SECRET_KEY_BASE
+        value: structure-test
+    expectedOutput: ['^42$']
     excludedError: ['.']
   - name: the logrotate configuration parses (no log exists yet, nothing is rotated)
     command: /usr/sbin/logrotate
