@@ -54,10 +54,11 @@ body=$(curl --fail --silent --show-error "${base}/health")
 [[ "${body}" == '{"status":"OK"}' ]] || fail "unexpected /health body: ${body}"
 echo "/health answers ${body}"
 
+# Neither nginx nor Passenger discloses its version (server_tokens off, passenger_show_version_in_header off).
 headers=$(curl --fail --silent --show-error --head "${base}/health")
-server=$(printf '%s\n' "${headers}" | tr -d '\r' | sed -n 's/^[Ss]erver: //p')
-[[ "${server}" == nginx ]] || fail "the Server header discloses more than the product name: ${server}"
-echo "Server header: ${server}"
+products=$(printf '%s\n' "${headers}" | tr -d '\r' | grep -iE '^(server|x-powered-by): ' || true)
+[[ -n "${products}" && "${products}" != *[0-9]* ]] || fail "a response header discloses a version: ${products}"
+echo "${products}"
 
 processes=$(docker top "${name}" -o pid,uid,args)
 not_app=$(printf '%s\n' "${processes}" | awk 'NR > 1 && $2 != 10001')

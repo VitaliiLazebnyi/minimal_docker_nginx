@@ -23,6 +23,8 @@ http {
     # are tracked by the Trivy and Grype gates of CI instead.
     passenger_disable_security_update_check on;
     passenger_disable_anonymous_telemetry on;
+    # Like server_tokens off for nginx: the Server and X-Powered-By headers name Passenger without its version.
+    passenger_show_version_in_header off;
 
     include /opt/nginx/conf/mime.types;
     access_log /var/logs/nginx/access.log;
