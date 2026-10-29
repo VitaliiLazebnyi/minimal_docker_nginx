@@ -25,6 +25,8 @@ curl http://localhost:8080/health   # {"status":"OK"}
 - nginx, Passenger and the application run as the unprivileged user `app` (uid 10001). nginx still listens on port 80:
   Docker sets `net.ipv4.ip_unprivileged_port_start=0` in every container. On a runtime that does not (for example a
   Kubernetes pod without that sysctl), set it in the pod's `securityContext.sysctls`.
+- Set `SECRET_KEY_BASE` (for example `--env SECRET_KEY_BASE=$(openssl rand -hex 64)`) when signed or encrypted data
+  must survive a restart; without it, each container generates its own at start.
 - Every log is written under `/var/logs` (nginx, Passenger, and `logrotate.log`); logs are rotated every day at
   midnight UTC.
 - The binaries are compiled with `-march=native` (REQ-COMP-001): build the image on the CPU model it will run on.
@@ -39,8 +41,8 @@ its jobs contains a warning or a deprecation notice. See [CONTRIBUTING.md](CONTR
 | CI | RSpec with 100% line and branch coverage, RuboCop (rails, rspec, performance, sorbet, ... plugins), Sorbet `typed: strict`, YARD 100% documented, Reek, Flay, outdated dependencies |
 | Mutation testing | Mutant on every subject of `app/`; every mutant must be killed |
 | Docker image | hadolint, BuildKit build checks, Trivy misconfiguration scan, container-structure-test, an end-to-end smoke test, Dockle, Trivy and Grype (fail on any fixable vulnerability), `nginx -t`, gixy |
-| Security | bundler-audit, Brakeman, Trivy (lockfiles and secrets), dependency review, gitleaks (full history) |
-| Lint | actionlint, zizmor (pedantic), ShellCheck (every optional check), typos, markdownlint, no inline suppressions |
+| Security | bundler-audit, Brakeman, Trivy (lockfiles and secrets), dependency review with an OpenSSF Scorecard gate (per-package allowances), gitleaks (full history) |
+| Lint | actionlint, zizmor (pedantic), ShellCheck (every optional check), typos, rumdl (markdownlint rules), no inline suppressions |
 
 The vulnerability reports of the image (Trivy, Grype) and the list of its files are uploaded as the `image-reports`
 artifact of every run of the Docker image workflow.
