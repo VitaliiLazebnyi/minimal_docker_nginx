@@ -1,1 +1,2 @@
-node_modules/
+# rumdl (Markdown lint) cache
+/.rumdl_cache/

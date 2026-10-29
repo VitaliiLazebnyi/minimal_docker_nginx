@@ -18,7 +18,7 @@ jobs:
   # (ShellCheck with every optional check, .shellcheckrc), spelling (typos) and inline suppressions.
   # The tools are installed from tools/requirements.txt, pinned with hashes.
   lint:
-    name: actionlint, zizmor, ShellCheck, typos, suppressions
+    name: actionlint, zizmor, ShellCheck, typos, rumdl, suppressions
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -42,31 +42,15 @@ jobs:
       run: shellcheck script/*.sh test/image/*.sh docker_config/entrypoint.sh .githooks/pre-commit
     - name: typos
       run: typos
+    - name: rumdl (markdownlint rules, .rumdl.toml)
+      run: rumdl check --deny-config-warnings .
     - name: Forbid inline suppressions
       run: script/forbidden_suppressions.sh
-
-  markdownlint:
-    name: markdownlint
-    runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        persist-credentials: false
-
-    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-      with:
-        node-version: lts/*
-    - name: Install markdownlint-cli2 (package-lock.json)
-      run: npm ci --ignore-scripts --no-audit --no-fund
-    - name: markdownlint (every rule, .markdownlint-cli2.jsonc)
-      run: npx --no-install markdownlint-cli2
 
   warning-gate:
     name: Warning gate
     if: ${{ !cancelled() }}
-    needs: [lint, markdownlint]
+    needs: [lint]
     runs-on: ubuntu-26.04
     permissions:
       actions: read # reads the logs of the other jobs of this run

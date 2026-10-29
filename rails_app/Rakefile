@@ -45,7 +45,8 @@ desc 'Fail unless every public API object (of the application and of the scripts
 task :yard do
   # The application reads .yardopts; YARD cannot be pointed at files outside its working directory, so the
   # scripts are documented from their own directory with the same options.
-  { Dir.pwd => [], SCRIPTS => %w[--plugin sorbet --no-private --markup markdown outdated.rb outdated/**/*.rb] }
+  script_files = %w[--plugin sorbet --no-private --markup markdown outdated.rb outdated/**/*.rb scorecards.rb]
+  { Dir.pwd => [], SCRIPTS => script_files }
     .each do |directory, files|
       output = IO.popen(['bundle', 'exec', 'yard', 'stats', '--list-undoc', '--no-save', *files],
                         chdir: directory, err: %i[child out], &:read)

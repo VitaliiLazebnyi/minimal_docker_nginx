@@ -5,7 +5,7 @@
 # Fails when a dependency of this repository is not at its newest release and is not on the documented hold
 # list (script/outdated_holds.yml), or when a listed hold is no longer needed. It covers the gems and Bundler
 # of rails_app/, RubyGems, every pinned Ruby, the nginx release the image builds, the Docker images (tag and digest) of
-# the Dockerfile and the workflows, the GitHub Actions (tag and commit), and the Python and npm tools.
+# the Dockerfile and the workflows, the GitHub Actions (tag and commit), and the Python tools.
 #
 # Run it with `bundle exec rake outdated` in rails_app/: it needs the application bundle (`bundle outdated`
 # and the installed Passenger gem).

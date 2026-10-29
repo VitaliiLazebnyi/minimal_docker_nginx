@@ -32,7 +32,7 @@ check 'zizmor ignore' 'zizmor: ?ignore'
 check 'shellcheck disable' 'shellcheck +disable'
 check 'hadolint ignore' 'hadolint +ignore'
 check 'Trivy ignore' 'trivy: ?ignore'
-check 'markdownlint suppression' 'markdownlint-(disable|capture|configure-file)'
+check 'markdownlint/rumdl suppression' '(markdownlint|rumdl)-(disable|capture|configure-file)'
 check 'typos suppression' 'typos: ?(ignore|off)|spellchecker: ?disable'
 check 'Brakeman ignore' 'brakeman:? ?ignore'
 check 'LGTM/CodeQL suppression' 'lgtm\[|codeql\[|codeql-disable|lgtm: ?ignore'
@@ -45,7 +45,7 @@ check 'Sorbet escape hatch' 'T\.(unsafe|cast|bind|untyped)\b|typed: *(false|igno
 # Suppression and todo files of the tools: findings are fixed, never parked in a file.
 for forbidden in .rubocop_todo.yml rails_app/.rubocop_todo.yml rails_app/sorbet/rbi/todo.rbi \
   .trivyignore .trivyignore.yaml .grype.yaml .dockleignore rails_app/config/brakeman.ignore \
-  .gitleaksignore .markdownlintignore .typos-ignore; do
+  .gitleaksignore .markdownlintignore .rumdlignore .typos-ignore; do
   if [[ -e "${forbidden}" ]]; then
     printf 'Forbidden (suppression or todo file): %s\n\n' "${forbidden}"
     status=1

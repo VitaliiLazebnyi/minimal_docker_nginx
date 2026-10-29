@@ -21,7 +21,16 @@ module Outdated
     # @return [Net::HTTPResponse]
     sig { params(url: String, headers: T::Hash[Symbol, String]).returns(Net::HTTPResponse) }
     def self.get(url, headers = {})
-      fetch(Net::HTTP::Get, url, headers)
+      checked(fetch(Net::HTTP::Get, url, headers), url)
+    end
+
+    # GETs +url+ like ::get, but returns nil when the server answers 404 Not Found.
+    # @param url [String]
+    # @return [Net::HTTPResponse, nil]
+    sig { params(url: String).returns(T.nilable(Net::HTTPResponse)) }
+    def self.find(url)
+      response = fetch(Net::HTTP::Get, url, {})
+      checked(response, url) unless response.is_a?(Net::HTTPNotFound)
     end
 
     # HEADs +url+; returns the successful or 401 response, raises on any other.
@@ -30,7 +39,7 @@ module Outdated
     # @return [Net::HTTPResponse]
     sig { params(url: String, headers: T::Hash[Symbol, String]).returns(Net::HTTPResponse) }
     def self.head(url, headers = {})
-      fetch(Net::HTTP::Head, url, headers)
+      checked(fetch(Net::HTTP::Head, url, headers), url)
     end
 
     # GETs and parses the JSON document at +url+ (read it with Document).
@@ -49,7 +58,7 @@ module Outdated
     private_class_method def self.fetch(method, url, headers)
       MAX_REDIRECTS.times do
         response = perform(method.new(URI(url), headers))
-        return checked(response, url) unless response.is_a?(Net::HTTPRedirection)
+        return response unless response.is_a?(Net::HTTPRedirection)
 
         url = String(URI.join(url, response.fetch('location')))
       end

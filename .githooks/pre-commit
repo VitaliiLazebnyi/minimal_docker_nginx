@@ -13,7 +13,7 @@ echo "==> Running RSpec, RuboCop and Sorbet..."
 (cd rails_app && bundle exec rake spec rubocop typecheck)
 
 # Installed with `pip install --require-hashes -r tools/requirements.txt` (see CONTRIBUTING.md).
-for tool in shellcheck typos actionlint; do
+for tool in shellcheck typos actionlint rumdl; do
   if ! command -v "${tool}" > /dev/null; then
     echo "==> ${tool} is not installed; CI runs it"
     continue
@@ -21,6 +21,7 @@ for tool in shellcheck typos actionlint; do
   echo "==> Running ${tool}..."
   case "${tool}" in
     shellcheck) shellcheck script/*.sh test/image/*.sh docker_config/entrypoint.sh .githooks/pre-commit ;;
+    rumdl) rumdl check --deny-config-warnings . ;;
     *) "${tool}" ;;
   esac
 done

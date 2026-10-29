@@ -134,7 +134,7 @@ for shipping with bizarre file extensions they strictly require at runtime:
 1. **Extensionless Files:** Binaries like `puma` do not have extensions. A naive whitelist will delete your web server.
 2. **Database Artifacts:** The `mime-types` gem ships with massive `.json` databases.
 3. **Security Artifacts:** Gems like `grpc` ship with `.pem` root certificates. If a whitelist accidentally deletes
-    these, your application will fatally crash in production with `Errno::ENOENT`.
+   these, your application will fatally crash in production with `Errno::ENOENT`.
 
 ---
 

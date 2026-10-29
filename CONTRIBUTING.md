@@ -10,8 +10,7 @@ The Rails application lives in `rails_app/` and develops on the Ruby in `rails_a
 
 ```bash
 cd rails_app && bundle install && cd ..
-python3 -m pip install --require-hashes -r tools/requirements.txt   # actionlint, gixy, ShellCheck, typos, zizmor
-npm ci                                                             # markdownlint-cli2
+python3 -m pip install --require-hashes -r tools/requirements.txt   # actionlint, gixy, rumdl, ShellCheck, typos, zizmor
 git config core.hooksPath .githooks   # optional: run the fast gates before every commit
 ```
 
@@ -51,7 +50,7 @@ Mutant parses the code with the `parser` gem, which only has a grammar for Ruby 
 
 `rake outdated` (`script/outdated.rb`) checks the gems, Bundler and RubyGems, every pinned Ruby, the nginx release the
 image builds, every Docker image (newest tag, and the digest the tag points to), every GitHub Action (newest release, pinned
-to its commit), and the Python and npm tools. A dependency that cannot be updated is listed, with the reason, in
+to its commit), and the Python tools. A dependency that cannot be updated is listed, with the reason, in
 `script/outdated_holds.yml`; the check also fails when a hold is no longer needed.
 
 ### Docker image
@@ -77,7 +76,7 @@ actionlint
 zizmor --persona pedantic .github/workflows
 shellcheck script/*.sh test/image/*.sh docker_config/entrypoint.sh .githooks/pre-commit
 typos
-npx markdownlint-cli2
+rumdl check --deny-config-warnings .
 script/forbidden_suppressions.sh
 ```
 
@@ -85,7 +84,7 @@ script/forbidden_suppressions.sh
 
 - **No inline suppressions.** Nothing may silence a linter, scanner, type checker, warning or test in place: no
   `rubocop:disable`, `:nocov:`, `:reek:`, `mutant:disable`, `hadolint ignore`, `shellcheck disable`,
-  `markdownlint-disable`, `gitleaks:allow`, `nosec`, `T.unsafe`/`T.cast`/`T.bind`/`T.untyped` in `app/`,
+  `rumdl-disable`/`markdownlint-disable`, `gitleaks:allow`, `nosec`, `T.unsafe`/`T.cast`/`T.bind`/`T.untyped` in `app/`,
   `$VERBOSE = nil`, `skip`/`pending`/`focus`, and so on, and no suppression or todo file (`.rubocop_todo.yml`,
   `.trivyignore`, `.grype.yaml`, `.dockleignore`, `brakeman.ignore`, `sorbet/rbi/todo.rbi`, ...). Fix the cause. A rule
   that cannot apply is configured narrowly in the tool's configuration file, with the reason written next to it
@@ -97,8 +96,10 @@ script/forbidden_suppressions.sh
 - **Behavior is specified.** Every behavioral fix needs a regression test (a spec, a structure test or a smoke-test
   step), and every surviving mutant needs a test that kills it (or, when the mutation cannot change observable
   behavior, simpler code).
-- **Vulnerable transitive dependencies are forced to a fixed release.** `package.json` overrides `katex` (needed by
-  markdownlint-cli2 through `micromark-extension-math`, whose newest release still asks for `^0.16.0`) to its newest
-  release, which fixes CVE-2026-103923; `rake outdated` keeps overrides at the newest release too.
+- **Dependencies come from well-maintained projects.** On every pull request, `script/scorecards.rb` (Dependency
+  review job) fails when an added dependency has an [OpenSSF Scorecard](https://scorecard.dev) below 3, unless
+  `script/scorecard_allowances.yml` allows that one package with the reason it cannot be dropped. Drop or replace a
+  low-scoring dependency first (Markdown is linted with rumdl, a single binary, instead of markdownlint-cli2 and its
+  low-scoring npm dependencies; the Rails app depends on the frameworks it loads, not on the `rails` meta-gem).
 - **Everything is pinned and current.** Docker images are pinned by digest, GitHub Actions by commit, Python tools by
   hash; `rake outdated` keeps them at their newest releases.

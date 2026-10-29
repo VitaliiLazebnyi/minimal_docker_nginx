@@ -22,8 +22,10 @@ module Outdated
   class Report
     extend T::Sig
 
-    sig { void }
-    def initialize
+    # @param prefix [String] the word that starts every failing message
+    sig { params(prefix: String).void }
+    def initialize(prefix = 'OUTDATED')
+      @prefix = prefix
       @problems = T.let(0, Integer)
     end
 
@@ -38,7 +40,7 @@ module Outdated
     # @param message [String]
     sig { params(message: String).void }
     def problem(message)
-      warn "OUTDATED: #{message}"
+      warn "#{@prefix}: #{message}"
       @problems += 1
     end
 

@@ -110,14 +110,26 @@ jobs:
         persist-credentials: false
 
     - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+      id: review
       with:
         fail-on-severity: low
         comment-summary-in-pr: on-failure
-        # OpenSSF Scorecards stay in the summary, but a low upstream score is not a defect of this repository
-        # and cannot be fixed here: the remaining low-scoring packages are transitive dependencies of RuboCop
-        # (ruby-progressbar) and markdownlint (micromark's character-entity packages). The action would print a
-        # warning annotation for every package below the threshold (default 3); 0 reports the scores only.
-        warn-on-openssf-scorecard-level: 0
+        # The action can only warn about a low OpenSSF Scorecard, and has no per-package allowance. The
+        # threshold (3) is enforced by script/scorecards.rb below instead, which fails on a low-scoring added
+        # dependency unless script/scorecard_allowances.yml allows that one package, with its reason.
+        show-openssf-scorecard: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        rubygems: latest
+        bundler-cache: true
+        working-directory: rails_app
+    - name: OpenSSF Scorecard of every added dependency (threshold 3, per-package allowances)
+      working-directory: rails_app
+      env:
+        DEPENDENCY_CHANGES: ${{ steps.review.outputs.dependency-changes }}
+      run: bundle exec ruby ../script/scorecards.rb
 
   gitleaks:
     name: Secret scanning (gitleaks)

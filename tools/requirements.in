@@ -2,6 +2,7 @@
 # Regenerate the lock with: pip-compile --generate-hashes --strip-extras tools/requirements.in
 actionlint-py
 gixy-ng
+rumdl
 shellcheck-py
 typos
 zizmor

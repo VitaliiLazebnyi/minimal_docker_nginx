@@ -1,6 +1,6 @@
 # Dependencies that are deliberately NOT at their newest release, each with the reason.
 # `rake outdated` (script/outdated.rb) fails for any other outdated dependency (gems, Ruby, nginx, Bundler,
-# RubyGems, Docker images, GitHub Actions, Python and npm tools), and for a hold that is no longer needed.
+# RubyGems, Docker images, GitHub Actions, Python tools), and for a hold that is no longer needed.
 # Every gem entry quotes the exact blocking constraint (checked against rubygems.org on 2026-10-28).
 gems:
   diff-lcs:

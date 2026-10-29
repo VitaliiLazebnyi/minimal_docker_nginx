@@ -128,7 +128,7 @@ jobs:
     - run: bundle exec rake reek flay
 
   # Every dependency must be at its newest release, except those on the documented hold list
-  # (script/outdated_holds.yml): gems, Bundler, Ruby, nginx, Docker images, GitHub Actions, Python and npm tools.
+  # (script/outdated_holds.yml): gems, Bundler, Ruby, nginx, Docker images, GitHub Actions, Python tools.
   outdated:
     name: Outdated dependencies
     runs-on: ubuntu-26.04
