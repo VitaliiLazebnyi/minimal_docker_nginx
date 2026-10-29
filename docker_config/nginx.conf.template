@@ -1,4 +1,6 @@
 worker_processes 1;
+# Each connection can hold two descriptors (client and upstream): at least twice worker_connections.
+worker_rlimit_nofile 2048;
 daemon off;
 error_log /var/logs/nginx/error.log;
 pid /tmp/nginx/nginx.pid;
@@ -10,14 +12,25 @@ events {
 http {
     passenger_root REPLACE_ME_PASSENGER_ROOT;
     passenger_ruby /usr/local/bin/ruby;
-    
+
     # Store passenger logs centrally
     passenger_log_file /var/logs/passenger/passenger.log;
     passenger_instance_registry_dir /tmp/passenger;
+    # The default (<nginx prefix>/passenger_temp) is not writable by the unprivileged account.
+    passenger_temp_path /tmp/nginx/passenger_temp;
+    # The image ships no CA certificates and has no business calling home: Passenger's daily security
+    # update check (which failed with an SSL error) and its anonymous telemetry are off. Vulnerabilities
+    # are tracked by the Trivy and Grype gates of CI instead.
+    passenger_disable_security_update_check on;
+    passenger_disable_anonymous_telemetry on;
+    # Like server_tokens off for nginx: the Server and X-Powered-By headers name Passenger without its version.
+    passenger_show_version_in_header off;
 
     include /opt/nginx/conf/mime.types;
     access_log /var/logs/nginx/access.log;
-    
+    # Do not disclose the nginx version in the Server header and on error pages.
+    server_tokens off;
+
     client_body_temp_path /tmp/nginx/client_body;
     fastcgi_temp_path /tmp/nginx/fastcgi_temp;
     proxy_temp_path /tmp/nginx/proxy_temp;
@@ -31,8 +44,6 @@ http {
 
         passenger_enabled on;
         passenger_app_env production;
-        passenger_user root;
-        passenger_group root;
 
         location /health {
             passenger_enabled on;

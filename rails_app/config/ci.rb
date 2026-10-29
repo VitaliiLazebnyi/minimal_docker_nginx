@@ -1,19 +1,8 @@
-# Run using bin/ci
+# typed: false
+# frozen_string_literal: true
 
-CI.run do
-  step "Setup", "bin/setup --skip-server"
-
-  step "Tests: Rails", "bin/rails test"
-  step "Tests: Seeds", "env RAILS_ENV=test bin/rails db:seed:replant"
-
-  # Optional: Run system tests
-  # step "Tests: System", "bin/rails test:system"
-
-  # Optional: set a green GitHub commit status to unblock PR merge.
-  # Requires the `gh` CLI and `gh extension install basecamp/gh-signoff`.
-  # if success?
-  #   step "Signoff: All systems go. Ready for merge and deploy.", "gh signoff"
-  # else
-  #   failure "Signoff: CI failed. Do not merge or deploy.", "Fix the issues and try again."
-  # end
+# Run using bin/ci: the same gates as `bundle exec rake` (see CONTRIBUTING.md), one step per gate.
+ActiveSupport::ContinuousIntegration.run do
+  step 'Setup', 'bin/setup --skip-server'
+  step 'Gates', 'bin/rake'
 end

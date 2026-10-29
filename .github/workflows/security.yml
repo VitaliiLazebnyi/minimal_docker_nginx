@@ -1,0 +1,169 @@
+name: Security
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  RUBYOPT: -W:deprecated -W:performance
+  TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+  GITLEAKS_IMAGE: zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+
+jobs:
+  bundler-audit:
+    name: bundler-audit
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: rails_app
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        rubygems: latest
+        bundler-cache: true
+        working-directory: rails_app
+    - name: Check the Ruby version
+      run: ../script/check_ruby.sh
+    - run: bundle exec rake audit
+
+  brakeman:
+    name: Brakeman
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: rails_app
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        rubygems: latest
+        bundler-cache: true
+        working-directory: rails_app
+    - name: Check the Ruby version
+      run: ../script/check_ruby.sh
+    # Every check, no ignore file (rails_app/config/brakeman.ignore is forbidden), zero warnings.
+    - run: bundle exec rake brakeman
+
+  # Vulnerabilities in every lockfile of the repository (Gemfile.lock, tools/requirements.txt,
+  # package-lock.json; development dependencies included) and secrets in the working tree.
+  trivy-fs:
+    name: Trivy (repository)
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    # Trivy reads the licenses of the Python packages from an installed environment (it warns without one),
+    # so the tools are installed and Trivy runs on the runner: its binary is copied out of the pinned image.
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: 3.x
+    - name: Install the Python tools (tools/requirements.txt)
+      run: python -m pip install --quiet --disable-pip-version-check --require-hashes -r tools/requirements.txt
+    - name: Install Trivy from its pinned image
+      run: |
+        container=$(docker create "$TRIVY_IMAGE")
+        docker cp "$container:/usr/local/bin/trivy" "$RUNNER_TEMP/trivy"
+        docker rm "$container"
+    - name: Scan the lockfiles and the working tree
+      run: >-
+        "$RUNNER_TEMP/trivy" filesystem --scanners vuln,secret --include-dev-deps --exit-code 1 --no-progress .
+
+  # Requires the repository's Dependency graph to be enabled (Settings > Code security).
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      pull-requests: write # post the dependency review summary on the pull request
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+      id: review
+      with:
+        fail-on-severity: low
+        comment-summary-in-pr: on-failure
+        # The action can only warn about a low OpenSSF Scorecard, and has no per-package allowance. The
+        # threshold (3) is enforced by script/scorecards.rb below instead, which fails on a low-scoring added
+        # dependency unless script/scorecard_allowances.yml allows that one package, with its reason.
+        show-openssf-scorecard: false
+
+    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+      with:
+        ruby-version: .ruby-version
+        rubygems: latest
+        bundler-cache: true
+        working-directory: rails_app
+    - name: OpenSSF Scorecard of every added dependency (threshold 3, per-package allowances)
+      working-directory: rails_app
+      env:
+        DEPENDENCY_CHANGES: ${{ steps.review.outputs.dependency-changes }}
+      run: bundle exec ruby ../script/scorecards.rb
+
+  gitleaks:
+    name: Secret scanning (gitleaks)
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+
+    # The pinned gitleaks image is run directly: the gitleaks action still runs on a deprecated Node.js
+    # version and logs deprecation warnings.
+    - name: Scan the full history for secrets
+      run: >-
+        docker run --rm --volume "$PWD:/repository:ro" "$GITLEAKS_IMAGE"
+        git --redact --verbose --exit-code 1 /repository
+
+  warning-gate:
+    name: Warning gate
+    if: ${{ !cancelled() }}
+    needs: [bundler-audit, brakeman, trivy-fs, dependency-review, gitleaks]
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: read # reads the logs of the other jobs of this run
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Fail on any warning or deprecation in the logs of this run
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GATE_JOB_NAME: Warning gate
+      run: script/warning_gate.sh

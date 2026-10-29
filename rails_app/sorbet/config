@@ -1,0 +1,7 @@
+--dir
+.
+--dir
+../script
+--ignore=tmp/
+--ignore=vendor/
+--parser=prism

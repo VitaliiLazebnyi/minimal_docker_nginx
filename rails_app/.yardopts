@@ -1,0 +1,5 @@
+--plugin sorbet
+--no-private
+--markup markdown
+app/**/*.rb
+lib/**/*.rb
