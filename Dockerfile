@@ -56,6 +56,14 @@ WORKDIR /app
 RUN bundle config set --global build.nokogiri "--with-cflags='${OPTIMIZATION_FLAGS}' --with-cxxflags='${OPTIMIZATION_FLAGS}'" && \
     bundle config set --global build.sqlite3 "--with-cflags='${OPTIMIZATION_FLAGS}' --with-cxxflags='${OPTIMIZATION_FLAGS}'" && \
     bundle install && rm -rf /usr/local/bundle/cache /app/vendor && \
+    # Ruby ships json as a default gem, at the version of its release (4.0.9: json 2.18.0, which has known
+    # vulnerabilities). The json of Gemfile.lock is installed in GEM_HOME too, for the Ruby code that runs outside
+    # the bundle, and the default gem (gemspec, library and extension) is removed so nothing can load it.
+    gem install json --no-document --version \
+      "$(ruby -rbundler -e 'print Bundler::LockfileParser.new(File.read("Gemfile.lock")).specs.find { _1.name == "json" }.version')" && \
+    rm -rf /usr/local/lib/ruby/gems/*/specifications/default/json-*.gemspec \
+      /usr/local/lib/ruby/[0-9]*/json /usr/local/lib/ruby/[0-9]*/json.rb /usr/local/lib/ruby/[0-9]*/*-linux*/json && \
+    ruby -e 'require "json"; abort "default json still loaded" unless Gem.loaded_specs.fetch("json").version >= Gem::Version.new("3")' && \
     mkdir -p /app/tmp /app/log /app/storage && \
     chown -R app:app /app/tmp /app/log /app/storage
 
@@ -137,6 +145,7 @@ RUN find /usr/local/bundle/ruby/*/gems/ -maxdepth 2 -type d \( -name test -o -na
            /usr/local/bundle/gems/passenger-*/package.json \
            /usr/local/bundle/gems/passenger-*/images \
            /usr/local/bundle/gems/passenger-*/resources/update_check_client_cert.p12 \
+           /usr/local/bundle/gems/passenger-*/resources/update_check_client_cert.pem \
            /usr/local/bundle/ruby/*/gems/passenger-*/build \
            /usr/local/bundle/ruby/*/gems/passenger-*/dev \
            /usr/local/bundle/ruby/*/gems/passenger-*/configure \

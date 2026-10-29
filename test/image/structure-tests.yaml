@@ -71,6 +71,10 @@ fileExistenceTests:
   - name: no encrypted credentials (their master key is never in the image)
     path: /app/config/credentials.yml.enc
     shouldExist: false
+  # Passenger's update-check client key (Trivy secret scan); the update check is disabled in nginx.conf.
+  - name: no Passenger update-check client key
+    path: /usr/local/bundle/gems/passenger-6.2.1/resources/update_check_client_cert.pem
+    shouldExist: false
 
 fileContentTests:
   - name: the application account exists (Passenger looks it up by uid)
@@ -85,6 +89,18 @@ fileContentTests:
     expectedContents: ['/tmp/nginx/nginx\.pid']
 
 commandTests:
+  # Regression: Ruby's default json gem (2.18.0, known vulnerabilities) was loaded outside the bundle.
+  - name: outside the bundle, json is the release of Gemfile.lock
+    command: /usr/local/bin/ruby
+    args:
+      - -rbundler
+      - -e
+      - >-
+        locked = Bundler::LockfileParser.new(File.read('Gemfile.lock')).specs.find { _1.name == 'json' }.version;
+        require 'json';
+        print Gem.loaded_specs.fetch('json').version == locked, ' ', Gem::Specification.any? { _1.default_gem? && _1.name == 'json' }
+    expectedOutput: ['^true false$']
+    excludedError: ['.']
   - name: Ruby version
     command: /usr/local/bin/ruby
     args: ["-e", "print RUBY_VERSION"]
