@@ -1,0 +1,28 @@
+# Warnings that third-party gems print, which script/warnings.sh does not count. Nothing else is exempt: every other
+# warning or deprecation notice, from this repository or from any tool, fails script/check and the warning gate of
+# every workflow.
+#
+# Every Ruby command of the repository runs with every warning category on (RUBYOPT=-w -W:deprecated
+# -W:performance), the development tools included. Each entry below is a verbose-mode (`-w`) warning in code that a
+# gem runs itself, with no setting to avoid it; each gem is at its newest release (`rake outdated`). An entry is an
+# extended regular expression that must match the end of the log line, and names the exact release of the gem (a
+# newer release has to be checked again) and the exact file, line and message.
+
+# kramdown 2.5.2, which rubocop-md loads (`rake rubocop`): a regular expression of its parser repeats a range.
+/kramdown-2\.5\.2/lib/kramdown/parser/base\.rb:60: warning: character class has duplicated range: /\[\\s\\p\{Z\}\]\+/$
+
+# yard 0.9.45 (`rake yard`, and rubocop-yard in `rake rubocop`): its Markdown helper repeats a range in a regular
+# expression, and YARD::Tags::TypesExplainer::Parser defines #create_type twice.
+/yard-0\.9\.45/lib/yard/templates/helpers/markup/hybrid_markdown\.rb:558: warning: character class has duplicated range$
+/gems/yard-0\.9\.45/lib/yard/tags/types_explainer\.rb:285: warning: method redefined; discarding old create_type$
+/gems/yard-0\.9\.45/lib/yard/tags/types_explainer\.rb:273: warning: previous definition of create_type was here$
+
+# tapioca 0.20.0 (`rake typecheck`) defines `exit` and `abort` twice in Tapioca::Runtime::Helpers: once in the module
+# body and again in the `T::Sig`-typed section below it.
+/gems/tapioca-0\.20\.0/lib/tapioca/runtime/helpers\.rb:(34|35): warning: method redefined; discarding old (exit|abort)$
+/gems/tapioca-0\.20\.0/lib/tapioca/runtime/helpers\.rb:6: warning: previous definition of (exit|abort) was here$
+
+# bundler-audit 0.9.3 (`rake audit`) redefines Thor's `say_error` (lib/bundler/audit/cli/thor_ext) for the Thor
+# releases that lack it; Thor 1.5.0 has it, so Ruby reports the redefinition.
+/gems/bundler-audit-0\.9\.3/[^ ]*/say_error\.rb:(16|28): warning: method redefined; discarding old say_error$
+/gems/thor-1\.5\.0/lib/thor/shell(/basic)?\.rb:(59|115): warning: previous definition of say_error was here$

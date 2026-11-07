@@ -24,6 +24,16 @@
     "name": "hadolint/hadolint",
     "tag": "v2.15.1"
   },
+  "lychee": {
+    "digest": "sha256:e2d19e57cf6ab037026f20b8e449a1f30d9d7f81eef4194763aab2eab20bd28d",
+    "name": "lycheeverse/lychee",
+    "tag": "0.24.2"
+  },
+  "semgrep": {
+    "digest": "sha256:cc1b68266f267878b39739373ea9985b9a78e5d64497dd875c8de100b22695ed",
+    "name": "semgrep/semgrep",
+    "tag": "1.184.0"
+  },
   "structure-test": {
     "digest": "sha256:710da3ca8ed29a42423315592f74f02df4e3d2ba19f1df7257bd481ea75ba5aa",
     "name": "ghcr.io/googlecontainertools/container-structure-test",

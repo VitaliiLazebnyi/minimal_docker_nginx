@@ -14,8 +14,9 @@ files=$(git ls-files -z -- . ':(exclude)*.md' ':(exclude)script/forbidden_suppre
 
 # The extended regular expression that matches any of the arguments.
 any() {
-  local IFS='|'
-  printf '%s' "$*"
+  local pattern
+  pattern=$(printf '%s|' "$@")
+  printf '%s' "${pattern%|}"
 }
 
 status=0
@@ -43,6 +44,10 @@ check 'typos suppression' 'typos: ?(ignore|off)|spellchecker: ?disable'
 check 'Brakeman ignore' 'brakeman:? ?ignore'
 check 'LGTM/CodeQL suppression' 'lgtm\[|codeql\[|codeql-disable|lgtm: ?ignore'
 check 'nosec' 'nosec|NOLINT'
+check 'Semgrep suppression' 'nosemgrep'
+lychee_exclusions=$(any exclude exclude_path exclude_all_private exclude_private exclude_loopback exclude_link_local \
+  accept)
+check 'lychee exclusion' "^ *(${lychee_exclusions}) *=" 'lychee\.toml'
 check 'yamllint directive' 'yamllint (disable|enable)'
 check 'editorconfig-checker directive' 'editorconfig-checker-(disable|enable)'
 warnings=$(any '[$]VERBOSE *= *(nil|false)' 'Warning\.ignore' 'silence_warnings' '[$]stderr *= *File::NULL' \
@@ -61,11 +66,18 @@ check 'weak Sorbet sigil' 'typed: *(false|ignore|true)\b' 'rails_app/(app|lib)/'
 # Suppression and todo files of the tools: findings are fixed, never parked in a file.
 for forbidden in .rubocop_todo.yml rails_app/.rubocop_todo.yml rails_app/sorbet/rbi/todo.rbi \
   .trivyignore .trivyignore.yaml .grype.yaml .dockleignore rails_app/config/brakeman.ignore \
-  .gitleaksignore .markdownlintignore .rumdlignore .typos-ignore .yamllint-ignore .ecrc; do
+  .gitleaksignore .markdownlintignore .rumdlignore .typos-ignore .yamllint-ignore .ecrc .lycheeignore; do
   if [[ -e ${forbidden} ]]; then
     printf 'Forbidden (suppression or todo file): %s\n\n' "${forbidden}"
     status=1
   fi
 done
+
+# .semgrepignore only replaces Semgrep's default ignore list (test/, vendor/, ...): it may hold comments, no path.
+ignored=$(grep -vE '^(#|$)' .semgrepignore || true)
+if [[ -n ${ignored} ]]; then
+  printf 'Forbidden (path in .semgrepignore):\n%s\n\n' "${ignored}"
+  status=1
+fi
 
 exit "${status}"

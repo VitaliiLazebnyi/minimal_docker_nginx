@@ -1,19 +1,29 @@
 ---
+# Mutation testing of every Ruby subject of the repository: the application, the helpers of the quality-gate tasks
+# (lib/tasks/quality_gates.rb) and the scripts of script/. Every mutation must be killed; there is no ignore pattern.
 coverage_criteria:
   process_abort: true
 environment_variables:
   RAILS_ENV: test
 includes:
   - app
+  - lib
   - spec
+  - ../script
 integration:
   name: rspec
 matcher:
   subjects:
     - ApplicationController*
     - HealthController*
+    - QualityGates*
+    - Outdated*
+    - Scorecards*
 mutation:
   timeout: 20.0
 requires:
   - ./config/environment
+  - ./lib/tasks/quality_gates
+  - ../script/outdated
+  - ../script/scorecards
 usage: opensource

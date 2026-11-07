@@ -1,0 +1,7 @@
+# lychee (https://lychee.cli.rs) checks every link of every Markdown file (script/check lychee): external links,
+# relative paths and #anchors included. A redirect fails like a broken link, so links point at their final address.
+# Nothing is excluded: there is no `exclude` list and no ignore file (script/forbidden_suppressions.sh).
+include_fragments = "full"
+max_redirects = 0
+max_retries = 3
+no_progress = true

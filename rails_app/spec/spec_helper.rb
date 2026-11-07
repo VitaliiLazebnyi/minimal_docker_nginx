@@ -11,14 +11,25 @@ require 'simplecov'
 # Mutation runs execute the suite thousands of times against deliberately broken code;
 # the coverage gate is meaningless (and noisy) there.
 unless defined?(Mutant)
-  SimpleCov.enable_coverage(:branch)
-  SimpleCov.minimum_coverage(line: 100, branch: 100)
-  # Coverage measures the application code. config/ is not tracked: under test only the
-  # files of the test environment are loaded, so the development and production
+  # Coverage measures the Ruby code of the repository: the application and the scripts of script/. config/ is not
+  # tracked: under test only the files of the test environment are loaded, so the development and production
   # configuration could never be covered; the database configuration is specified in spec/rails_app/.
-  SimpleCov.cover('{app,lib}/**/*.rb')
+  SimpleCov.root(File.expand_path('../..', __dir__))
+  SimpleCov.coverage_dir('rails_app/coverage')
+  SimpleCov.cover('rails_app/{app,lib}/**/*.rb', 'script/**/*.rb')
+  # Every line, branch and method of every file, not only of the code as a whole.
+  %i[line branch method].each do |criterion|
+    SimpleCov.coverage(criterion) do |rule|
+      rule.minimum(100)
+      rule.minimum(100, per: :file)
+    end
+  end
   SimpleCov.start
 end
+
+# Sorbet signatures of the memoized helpers (`sig { returns(...) }` above `let`) and of the helper methods of the
+# example groups.
+RSpec::Core::ExampleGroup.extend(T::Sig)
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
@@ -39,6 +50,10 @@ RSpec.configure do |config|
   end
 
   config.shared_context_metadata_behavior = :apply_to_host_groups
+
+  # Every Sorbet signature is evaluated before the first example: a signature is otherwise evaluated on the first call
+  # of its method, and sorbet-runtime warns when a stub replaces a method whose signature it has not evaluated yet.
+  config.before(:suite) { T::Utils.run_all_sig_blocks }
 
   # Ruby warnings from the project's own files are failures, never noise.
   config.before(:suite) do

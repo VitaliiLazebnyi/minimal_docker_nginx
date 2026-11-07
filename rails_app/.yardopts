@@ -1,5 +1,5 @@
---plugin sorbet
---no-private
+--private
+--protected
 --markup markdown
 app/**/*.rb
 lib/**/*.rb
