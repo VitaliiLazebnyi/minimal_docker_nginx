@@ -4,10 +4,10 @@
 set -euo pipefail
 
 version_file="$(dirname "$0")/../rails_app/.ruby-version"
-expected="${1:-$(tr -d '[:space:]' < "${version_file}")}"
+expected="${1:-$(tr -d '[:space:]' <"${version_file}")}"
 ruby -v
 actual="$(ruby -e 'print RUBY_VERSION')"
-if [[ "${actual}" != "${expected}" ]]; then
+if [[ ${actual} != "${expected}" ]]; then
   echo "Expected Ruby ${expected} but running ${actual}" >&2
   exit 1
 fi

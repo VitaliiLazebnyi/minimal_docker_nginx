@@ -1,5 +1,7 @@
-# typed: strict
+# typed: strong
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 require 'sorbet-runtime'
 require 'uri'
@@ -60,8 +62,8 @@ module Outdated
     sig { params(url: String).returns(T::Array[String]) }
     def tags(url = "https://#{@host}/v2/#{@repository}/tags/list?n=1000")
       response = Http.get(url, authorization)
-      page = Document.strings(JSON.parse(response.body.to_s), ['tags'])
-      next_page = Registry.next_page(url, response['link'].to_s)
+      page = Document.strings(Document.parse(response.body.to_s), ['tags'])
+      next_page = Registry.next_page(url, T.let(response.fetch('link', ''), String))
       next_page ? page + tags(next_page) : page
     end
 
@@ -71,7 +73,7 @@ module Outdated
     sig { params(tag: String).returns(String) }
     def digest(tag)
       url = "https://#{@host}/v2/#{@repository}/manifests/#{tag}"
-      Http.head(url, authorization.merge(Accept: MANIFEST_TYPES)).fetch('docker-content-digest', '')
+      T.let(Http.head(url, authorization.merge(Accept: MANIFEST_TYPES)).fetch('docker-content-digest', ''), String)
     end
 
     private
@@ -79,15 +81,16 @@ module Outdated
     # The Authorization header for this repository: an anonymous pull token when the registry asks for one.
     sig { returns(T::Hash[Symbol, String]) }
     def authorization
-      @authorization ||= begin
-        response = Http.get("https://#{@host}/v2/")
-        response.is_a?(Net::HTTPUnauthorized) ? { Authorization: "Bearer #{token(response)}" } : {}
-      end
+      @authorization ||=
+        begin
+          response = Http.get("https://#{@host}/v2/")
+          response.is_a?(Net::HTTPUnauthorized) ? { Authorization: "Bearer #{token(response)}" } : {}
+        end
     end
 
     sig { params(response: Net::HTTPResponse).returns(String) }
     def token(response)
-      challenge = Challenge.new(response.fetch('www-authenticate', ''))
+      challenge = Challenge.new(T.let(response.fetch('www-authenticate', ''), String))
       body = Http.json(challenge.token_url(@host, @repository))
       Document.string(body, [Document.key?(body, ['token']) ? 'token' : 'access_token'])
     end

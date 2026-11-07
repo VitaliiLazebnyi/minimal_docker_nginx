@@ -1,6 +1,11 @@
 #!/usr/bin/env ruby
+# typed: strict
 # frozen_string_literal: true
 
-APP_PATH = File.expand_path('../config/application', __dir__)
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 require_relative '../config/boot'
+require 'sorbet-runtime'
+
+APP_PATH = T.let(File.expand_path('../config/application', __dir__), String)
 require 'rails/commands'

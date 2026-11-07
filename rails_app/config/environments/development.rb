@@ -1,5 +1,7 @@
-# typed: false
+# typed: strict
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 require 'active_support/core_ext/integer/time'
 
@@ -21,7 +23,7 @@ Rails.application.configure do
   # Enable/disable Action Controller caching. By default Action Controller caching is disabled.
   # Run rails dev:cache to toggle Action Controller caching.
   if Rails.root.join('tmp/caching-dev.txt').exist?
-    config.public_file_server.headers = { 'cache-control' => "public, max-age=#{2.days.in_seconds}" }
+    config.public_file_server.headers = { Rack::CACHE_CONTROL => "public, max-age=#{2.days.in_seconds}" }
   else
     config.action_controller.perform_caching = false
   end

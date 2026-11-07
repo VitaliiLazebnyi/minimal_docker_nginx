@@ -1,14 +1,49 @@
-# rumdl (https://github.com/rvben/rumdl) lints every Markdown file with all of its markdownlint-compatible rules;
-# there are no inline disable comments.
+# rumdl (https://github.com/rvben/rumdl) lints every Markdown file with every one of its rules, the markdownlint rules
+# and its own, including the opt-in ones (`extend-enable` lists them all); there are no inline disable comments
+# (script/forbidden_suppressions.sh). Three rules check nothing without a project-specific list, and this repository
+# has none to give: MD043 (a heading structure every file must follow: the documents differ), MD072 (front-matter
+# keys: no file has front matter) and MD096 (the column every table is sorted by: the tables are in reading order).
 [global]
-# Prose and tables are wrapped at the same width as the code (RuboCop Layout/LineLength).
+extend-enable = [
+  "MD001", "MD003", "MD004", "MD005", "MD007", "MD009", "MD010", "MD011", "MD012", "MD013", "MD014", "MD018",
+  "MD019", "MD020", "MD021", "MD022", "MD023", "MD024", "MD025", "MD026", "MD027", "MD028", "MD029", "MD030",
+  "MD031", "MD032", "MD033", "MD034", "MD035", "MD036", "MD037", "MD038", "MD039", "MD040", "MD041", "MD042",
+  "MD043", "MD044", "MD045", "MD046", "MD047", "MD048", "MD049", "MD050", "MD051", "MD052", "MD053", "MD054",
+  "MD055", "MD056", "MD057", "MD058", "MD059", "MD060", "MD061", "MD062", "MD063", "MD064", "MD065", "MD066",
+  "MD067", "MD068", "MD069", "MD070", "MD071", "MD072", "MD073", "MD074", "MD075", "MD076", "MD077", "MD078",
+  "MD079", "MD080", "MD081", "MD082", "MD083", "MD084", "MD085", "MD086", "MD087", "MD088", "MD089", "MD090",
+  "MD091", "MD092", "MD093", "MD094", "MD095", "MD096"
+]
+# Prose is wrapped at the same width as the code (RuboCop Layout/LineLength, yamllint, .editorconfig).
 line-length = 120
 respect-gitignore = true
-
-[MD013]
-line-length = 120
-tables = false
 
 # Lists use dashes everywhere.
 [MD004]
 style = "dash"
+
+[MD013]
+line-length = 120
+tables = true
+
+# The names of the tools and projects the documents mention, in their own spelling.
+[MD044]
+names = [
+  "Brakeman", "BuildKit", "Dependabot", "Dockle", "GitHub", "Grype", "Passenger", "RuboCop", "RubyGems", "Sorbet",
+  "SimpleCov", "Trivy", "YARD"
+]
+
+[MD060]
+enabled = true
+
+# Headings are in title case. The project name and "C/C++" are written as they are spelled.
+[MD063]
+enabled = true
+ignore-words = ["C/C++", "minimal_docker_nginx"]
+lowercase-words = [
+  "a", "an", "and", "as", "at", "but", "by", "for", "from", "in", "into", "nor", "of", "off", "on", "or", "per", "so",
+  "the", "to", "up", "via", "vs", "vs.", "with", "yet"
+]
+
+[MD073]
+enabled = true

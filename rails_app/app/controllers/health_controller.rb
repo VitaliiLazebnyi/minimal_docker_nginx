@@ -1,5 +1,7 @@
-# typed: strict
+# typed: strong
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 # Health endpoint probed by the Docker HEALTHCHECK (REQ-APP-003).
 class HealthController < ApplicationController
@@ -10,6 +12,6 @@ class HealthController < ApplicationController
   # GET /health: answers 200 with {"status":"OK"} once the application has booted.
   sig { void }
   def show
-    render json: HEALTHY
+    render(json: HEALTHY)
   end
 end

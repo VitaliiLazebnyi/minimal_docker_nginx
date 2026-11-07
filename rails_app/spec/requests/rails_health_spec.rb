@@ -1,9 +1,11 @@
-# typed: false
+# typed: strict
 # frozen_string_literal: true
 
-RSpec.describe 'GET /up' do
+# Copyright (c) 2026 Vitalii Lazebnyi
+
+RSpec.describe('GET /up') do
   it 'answers 200 once the application has booted' do
     get '/up'
-    expect(response).to have_http_status(:ok)
+    expect(response).to(have_http_status(:ok))
   end
 end

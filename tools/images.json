@@ -1,0 +1,37 @@
+{
+  "$comment": [
+    "The Docker images the checks run (script/check, which the workflows run), pinned by digest; script/check reads",
+    "them as name:tag@digest. `rake outdated` (script/outdated/images.rb) fails when a tag is not the newest of its",
+    "shape, or when the tag no longer points to the pinned digest."
+  ],
+  "dockle": {
+    "digest": "sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9",
+    "name": "goodwithtech/dockle",
+    "tag": "v0.4.15"
+  },
+  "gitleaks": {
+    "digest": "sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
+    "name": "zricethezav/gitleaks",
+    "tag": "v8.30.1"
+  },
+  "grype": {
+    "digest": "sha256:6a36234da13f9faa327306ac0b3dab3405cfa2b4eb20c8f904125a8707863913",
+    "name": "anchore/grype",
+    "tag": "v0.121.2"
+  },
+  "hadolint": {
+    "digest": "sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d",
+    "name": "hadolint/hadolint",
+    "tag": "v2.15.1"
+  },
+  "structure-test": {
+    "digest": "sha256:710da3ca8ed29a42423315592f74f02df4e3d2ba19f1df7257bd481ea75ba5aa",
+    "name": "ghcr.io/googlecontainertools/container-structure-test",
+    "tag": "1.22.1"
+  },
+  "trivy": {
+    "digest": "sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb",
+    "name": "aquasec/trivy",
+    "tag": "0.76.2"
+  }
+}

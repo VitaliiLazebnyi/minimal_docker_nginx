@@ -3,7 +3,7 @@
 This document archives the critical architectural behaviors, system thresholds, and native dependency traps discovered
 while minimizing the Alpine Ruby/Nginx/Passenger Docker container down to the `55.2MB` (compressed) threshold.
 
-## 1. The `gem.build_complete` & `*.gemspec` Native Load Trap
+## 1. The Native Load Trap of Build Markers and Gem Specifications
 
 When heavily pruning native gem extensions to save disk space, **the `gem.build_complete` marker and the `.gemspec`
 manifest cannot be deleted**.
@@ -16,7 +16,7 @@ manifest cannot be deleted**.
 - **The Resolution:** Ensure strict `find` conditions exclude `*.gemspec` and `gem.build_complete` when wiping
   extensions.
 
-## 2. Nginx Bootstrap Hardcoded `open()` Syscalls
+## 2. Nginx Bootstrap Hardcoded Open Syscalls
 
 - **The Trap:** Even if `nginx.conf` explicitly declares `error_log /var/logs/nginx/error.log;`, the Nginx daemon binary
   evaluates its compile-time prefix path for a microsecond _before_ it has parsed the configuration document.
@@ -37,17 +37,17 @@ manifest cannot be deleted**.
   (`/usr/local/bundle/gems/passenger-6.1.2`), and strictly execute `rm -rf /usr/local/bundle/ruby/*/gems/passenger-*` to
   eliminate the Bundler duplicate natively without breaking the Nginx dynamically linked module.
 
-## 4. `racc` as a Native Runtime Engine (Nokogiri)
+## 4. The Racc Parser as a Native Runtime Engine (Nokogiri)
 
 - **The Trap:** The base Ruby Alpine distribution ships standard "development" libraries natively (`rdoc`, `irb`,
   `test-unit`, `minitest`, `debug`). Scrubbing all of these from the image permanently reduces footprint by millions of
   bytes.
-- **The Crash:** Treating `racc` exclusively as a compiler tool and deleting it crashes Rails. Nokogiri’s XML parser,
+- **The Crash:** Treating `racc` exclusively as a compiler tool and deleting it crashes Rails. Nokogiri's XML parser,
   inherently tied to `ActionView` sanitization, dynamically requires `racc/parser.rb` at runtime.
 - **The Resolution:** Surgically target and delete `rdoc`, `irb`, `test-unit`, `debug`, `rbs`, `typeprof`, and
   `syntax_suggest` source blocks, but explicitly preserve `racc`.
 
-## 5. Alpine `ash` Scope Sensitivity for Version Control Garbage
+## 5. Alpine Shell Scope Sensitivity for Version Control Garbage
 
 - **The Trap:** When executing recursive sweeps for version control metadata (`CHANGES`, `CHANGELOG`, `Makefile`,
   `.gitignore`), Alpine's native `ash` shell evaluates standard `*` wildcards strictly case-sensitively. A query for
@@ -66,7 +66,7 @@ manifest cannot be deleted**.
   `kill`, `sleep`, `cat`, `echo`, `date`, `false`, `true`, `grep`, `env`, `crond`, `ps`, `logrotate`, `uname`, `id`,
   `wget`). This drops hundreds of binaries and minimizes the container attack boundary.
 
-## 7. Mathematical Acceleration vs. Floating-Point Safety (`-Ofast` / `-march=native`)
+## 7. Mathematical Acceleration vs. Floating-Point Safety
 
 - **The Theory:** Nginx, Passenger, and Nokogiri natively compile under `-O2`. Pushing this to `-Ofast` explicitly
   breaks strict IEEE 754 mathematically compliant behaviors (abandoning `NaN` checks via `-ffast-math`) to aggressively
@@ -83,7 +83,7 @@ manifest cannot be deleted**.
   hosting environments while maintaining SSE4.2 acceleration) to ensure the binary runs flawlessly on both development
   and production x64 CPUs without `SIGILL` crashes.
 
-## 8. Eliminating Extraneous External Load-Testing Toolchains (`curl`)
+## 8. Eliminating Extraneous External Load-Testing Toolchains
 
 - **The Trap:** It is standard industry practice to execute `CMD curl -f http://...` for Docker `HEALTHCHECK` states.
   However, physically storing the `curl` binary expands the production void by `>1 MB` while expanding the vulnerability
@@ -92,7 +92,7 @@ manifest cannot be deleted**.
   from the architecture. Implementing `wget --spider -q http://localhost` structurally enforces healthchecks without
   violating the minimalist dependency tree.
 
-## 9. Enforcing Global Compiler Heuristics across Native Ruby Gems (`mkmf.rb`)
+## 9. Enforcing Global Compiler Heuristics Across Native Ruby Gems
 
 - **The Trap:** Even when `$CFLAGS` and `$CXXFLAGS` are globally exported into the Docker environment, Ruby's native
   `mkmf.rb` standard library (which builds the Makefiles for C-extensions like Nokogiri, FFI, and SQLite) notoriously
@@ -130,7 +130,7 @@ manifest cannot be deleted**.
   the exact proprietary processor the container daemon resides on. This unlocks global application speed boosts
   structurally unattainable by modifying application-layer files.
 
-## 12. The Native Execution Bound: `*.gemspec` Integrity vs `generators`
+## 12. The Native Execution Bound: Gem Specification Integrity vs Generators
 
 - **The Trap:** In pursuit of pure binary footprint reduction, it is tempting to wipe all text data from the
   `/usr/local/bundle` namespace, including `*.gemspec` metadata files and `.rb` templates housed within `generators`

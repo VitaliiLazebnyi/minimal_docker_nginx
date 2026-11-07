@@ -1,5 +1,7 @@
-# typed: strict
+# typed: strong
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 require 'sorbet-runtime'
 require_relative 'http'
@@ -14,17 +16,19 @@ module Outdated
     private_constant :PIN
 
     # [location, version] of every pinned Ruby.
-    # @return [Array<(String, String)>]
+    # @return [Array<Array(String, String)>]
     sig { returns(T::Array[[String, String]]) }
     def self.pins
-      application = T.let([['rails_app/.ruby-version', File.read(File.join(APP, '.ruby-version')).strip]],
-                          T::Array[[String, String]])
+      application = T.let(
+        [['rails_app/.ruby-version', File.read(File.join(APP, '.ruby-version')).strip]],
+        T::Array[[String, String]]
+      )
       application + PINNING_FILES.flat_map { |path| pins_in(path) }
     end
 
     # [location, version] of every Ruby pinned in +path+.
     # @param path [String]
-    # @return [Array<(String, String)>]
+    # @return [Array<Array(String, String)>]
     sig { params(path: String).returns(T::Array[[String, String]]) }
     def self.pins_in(path)
       versions = File.read(path).scan(PIN).flatten

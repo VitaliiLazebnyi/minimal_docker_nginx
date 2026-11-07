@@ -53,17 +53,21 @@ RUN rm -rf /usr/src/ruby
 
 COPY rails_app /app
 WORKDIR /app
-RUN bundle config set --global build.nokogiri "--with-cflags='${OPTIMIZATION_FLAGS}' --with-cxxflags='${OPTIMIZATION_FLAGS}'" && \
-    bundle config set --global build.sqlite3 "--with-cflags='${OPTIMIZATION_FLAGS}' --with-cxxflags='${OPTIMIZATION_FLAGS}'" && \
+RUN bundle config set --global build.nokogiri \
+      "--with-cflags='${OPTIMIZATION_FLAGS}' --with-cxxflags='${OPTIMIZATION_FLAGS}'" && \
+    bundle config set --global build.sqlite3 \
+      "--with-cflags='${OPTIMIZATION_FLAGS}' --with-cxxflags='${OPTIMIZATION_FLAGS}'" && \
     bundle install && rm -rf /usr/local/bundle/cache /app/vendor && \
     # Ruby ships json as a default gem, at the version of its release (4.0.9: json 2.18.0, which has known
     # vulnerabilities). The json of Gemfile.lock is installed in GEM_HOME too, for the Ruby code that runs outside
     # the bundle, and the default gem (gemspec, library and extension) is removed so nothing can load it.
     gem install json --no-document --version \
-      "$(ruby -rbundler -e 'print Bundler::LockfileParser.new(File.read("Gemfile.lock")).specs.find { _1.name == "json" }.version')" && \
+      "$(ruby -rbundler -e 'print Bundler::LockfileParser.new(File.read("Gemfile.lock")) \
+        .specs.find { _1.name == "json" }.version')" && \
     rm -rf /usr/local/lib/ruby/gems/*/specifications/default/json-*.gemspec \
       /usr/local/lib/ruby/[0-9]*/json /usr/local/lib/ruby/[0-9]*/json.rb /usr/local/lib/ruby/[0-9]*/*-linux*/json && \
-    ruby -e 'require "json"; abort "default json still loaded" unless Gem.loaded_specs.fetch("json").version >= Gem::Version.new("3")' && \
+    ruby -e 'require "json"; \
+      abort "default json still loaded" unless Gem.loaded_specs.fetch("json").version >= Gem::Version.new("3")' && \
     mkdir -p /app/tmp /app/log /app/storage && \
     chown -R app:app /app/tmp /app/log /app/storage
 
@@ -101,83 +105,102 @@ RUN find /usr/local -type f -name '*.so*' -exec strip --strip-unneeded {} + || t
     # Purge C-Compiler Metadata directories
     rm -rf /usr/local/lib/pkgconfig /usr/local/include/ruby-* && \
     # Nuke Default Development Gems built into Ruby
-    for gem in minitest test-unit power_assert rbs typeprof debug irb reline syntax_suggest error_highlight rdoc racc; do \
+    for gem in minitest test-unit power_assert rbs typeprof debug irb reline syntax_suggest error_highlight \
+      rdoc racc; do \
         rm -rf /usr/local/lib/ruby/gems/*/gems/"${gem}"-* ; \
         rm -f /usr/local/lib/ruby/gems/*/specifications/"${gem}"-*.gemspec ; \
         rm -f /usr/local/lib/ruby/gems/*/specifications/default/"${gem}"-*.gemspec ; \
     done && \
     # The "Dirty Secret" of RubyGems (C/C++ Compiler Trash)
-    find /usr/local/lib/ruby/gems/ /usr/local/bundle/ /opt/nginx/ -type f \( -name "*.c" -o -name "*.h" -o -name "*.o" -o -name "*.cpp" -o -name "*.hpp" -o -name "*.cc" -o -name "*.cxx" -o -name "Makefile" \) -delete
+    find /usr/local/lib/ruby/gems/ /usr/local/bundle/ /opt/nginx/ -type f \( -name "*.c" -o -name "*.h" \
+      -o -name "*.o" -o -name "*.cpp" -o -name "*.hpp" -o -name "*.cc" -o -name "*.cxx" -o -name "Makefile" \) -delete
 
 # The "Absolute Minimum" Document/Test Purge (User Request)
-RUN find /usr/local/bundle/ruby/*/gems/ -maxdepth 2 -type d \( -name test -o -name tests -o -name spec -o -name features -o -name benchmark -o -name examples -o -name doc -o -name docs -o -name sample -o -name samples -o -name man -o -name manual -o -name templates \) -exec rm -rf {} + || true && \
-    find /usr/local/bundle/gems/ -maxdepth 2 -type d \( -name test -o -name tests -o -name spec -o -name features -o -name benchmark -o -name examples -o -name doc -o -name docs -o -name sample -o -name samples -o -name man -o -name manual -o -name templates \) -exec rm -rf {} + || true && \
-    find /usr/local/lib/ruby/ -maxdepth 3 -type d \( -name test -o -name tests -o -name spec -o -name features -o -name benchmark -o -name examples -o -name doc -o -name docs -o -name sample -o -name samples -o -name man -o -name manual -o -name templates \) -exec rm -rf {} + || true && \
-    find /usr/local/lib/ruby/gems/*/gems/ -maxdepth 2 -type d \( -name test -o -name tests -o -name spec -o -name features -o -name benchmark -o -name examples -o -name doc -o -name docs -o -name sample -o -name samples -o -name man -o -name manual \) -exec rm -rf {} + || true && \
+RUN find /usr/local/bundle/ruby/*/gems/ -maxdepth 2 -type d \( \
+      -name test -o -name tests -o -name spec -o -name features -o -name benchmark -o -name examples \
+      -o -name doc -o -name docs -o -name sample -o -name samples -o -name man -o -name manual -o -name templates \) \
+      -exec rm -rf {} + || true && \
+    find /usr/local/bundle/gems/ -maxdepth 2 -type d \( \
+      -name test -o -name tests -o -name spec -o -name features -o -name benchmark -o -name examples \
+      -o -name doc -o -name docs -o -name sample -o -name samples -o -name man -o -name manual -o -name templates \) \
+      -exec rm -rf {} + || true && \
+    find /usr/local/lib/ruby/ -maxdepth 3 -type d \( \
+      -name test -o -name tests -o -name spec -o -name features -o -name benchmark -o -name examples \
+      -o -name doc -o -name docs -o -name sample -o -name samples -o -name man -o -name manual -o -name templates \) \
+      -exec rm -rf {} + || true && \
+    find /usr/local/lib/ruby/gems/*/gems/ -maxdepth 2 -type d \( \
+      -name test -o -name tests -o -name spec -o -name features -o -name benchmark -o -name examples \
+      -o -name doc -o -name docs -o -name sample -o -name samples -o -name man -o -name manual \) \
+      -exec rm -rf {} + || true && \
     find /usr/local -type d -name "generators" -exec rm -rf {} + || true && \
     find /usr/local -name "*.a" -delete || true && \
     find /usr/local -name "*.la" -delete || true && \
     find /usr/local -type d -name "include" -exec rm -rf {} + || true && \
     find /usr/local -type d -name ".github" -exec rm -rf {} + || true && \
     rm -rf /opt/nginx/html /opt/nginx/logs && \
-    rm -f /opt/nginx/conf/*.default /opt/nginx/conf/fastcgi* /opt/nginx/conf/scgi* /opt/nginx/conf/uwsgi* /opt/nginx/conf/koi* /opt/nginx/conf/win* && \
+    rm -f /opt/nginx/conf/*.default /opt/nginx/conf/fastcgi* /opt/nginx/conf/scgi* /opt/nginx/conf/uwsgi* \
+      /opt/nginx/conf/koi* /opt/nginx/conf/win* && \
     ln -s /var/logs/nginx /opt/nginx/logs && \
-    for ext in "*.md" "*.txt" "*.log" "README*" "*LICENSE*" "*GPL*" "COPYING*" "BSDL" "CHANGELOG*" "CHANGES*" "CONTRIBUTING*" "CONTRIBUTORS*" "Rakefile*" "Makefile*" "BSDmakefile" "mkmf.log" "USAGE*" "TODO*" "THANKS*" ".document" ".gitignore" "Gemfile" "*.java" ".travis.yml" ".yardopts" "*.out"; do \
+    for ext in "*.md" "*.txt" "*.log" "README*" "*LICENSE*" "*GPL*" "COPYING*" "BSDL" "CHANGELOG*" "CHANGES*" \
+      "CONTRIBUTING*" "CONTRIBUTORS*" "Rakefile*" "Makefile*" "BSDmakefile" "mkmf.log" "USAGE*" "TODO*" "THANKS*" \
+      ".document" ".gitignore" "Gemfile" "*.java" ".travis.yml" ".yardopts" "*.out"; do \
         find /usr/local/bundle -iname "$ext" -exec rm -f {} + || true; \
         find /usr/local/lib -iname "$ext" -exec rm -f {} + || true; \
     done && \
     rm -rf /usr/local/bundle/ruby/*/cache \
-           /usr/local/bundle/cache \
-           /usr/local/lib/ruby/gems/*/cache \
-           /usr/local/bundle/gems/passenger-*/resources/templates/apache2 \
-           /usr/local/bundle/gems/passenger-*/resources/templates/standalone \
-           /usr/local/bundle/gems/passenger-*/resources/templates/installer_common \
-           /usr/local/bundle/gems/passenger-*/resources/templates/config \
-           /usr/local/bundle/gems/passenger-*/resources/templates/nginx \
-           /usr/local/bundle/ruby/*/gems/passenger-*/resources/templates/apache2 \
-           /usr/local/bundle/ruby/*/gems/passenger-*/resources/templates/standalone \
-           /usr/local/bundle/ruby/*/gems/passenger-*/resources/templates/installer_common \
-           /usr/local/bundle/ruby/*/gems/passenger-*/resources/templates/config \
-           /usr/local/bundle/ruby/*/gems/passenger-*/resources/templates/nginx \
-           /usr/local/bundle/gems/passenger-*/build \
-           /usr/local/bundle/gems/passenger-*/dev \
-           /usr/local/bundle/gems/passenger-*/configure \
-           /usr/local/bundle/gems/passenger-*/package.json \
-           /usr/local/bundle/gems/passenger-*/images \
-           /usr/local/bundle/gems/passenger-*/resources/update_check_client_cert.p12 \
-           /usr/local/bundle/gems/passenger-*/resources/update_check_client_cert.pem \
-           /usr/local/bundle/ruby/*/gems/passenger-*/build \
-           /usr/local/bundle/ruby/*/gems/passenger-*/dev \
-           /usr/local/bundle/ruby/*/gems/passenger-*/configure \
-           /usr/local/bundle/ruby/*/gems/passenger-*/package.json \
-           /usr/local/bundle/ruby/*/gems/passenger-*/images \
-           /usr/local/bundle/ruby/*/gems/passenger-*/resources/update_check_client_cert.p12 \
-           /usr/local/bundle/ruby/*/gems/rdoc-* \
-           /usr/local/lib/ruby/gems/*/gems/rdoc-* \
-           /usr/local/bundle/ruby/*/gems/irb-* \
-           /usr/local/lib/ruby/gems/*/gems/irb-* \
-           /usr/local/bundle/ruby/*/gems/typeprof-* \
-           /usr/local/lib/ruby/gems/*/gems/typeprof-* \
-           /usr/local/bundle/ruby/*/gems/rbs-* \
-           /usr/local/lib/ruby/gems/*/gems/rbs-* \
-           /usr/local/bundle/ruby/*/gems/syntax_suggest-* \
-           /usr/local/lib/ruby/gems/*/gems/syntax_suggest-* \
-           /usr/local/bundle/ruby/*/gems/test-unit-* \
-           /usr/local/lib/ruby/gems/*/gems/test-unit-* \
-           /usr/local/bundle/ruby/*/gems/minitest-* \
-           /usr/local/lib/ruby/gems/*/gems/minitest-* \
-           /usr/local/bundle/ruby/*/gems/rdbg-* \
-           /usr/local/lib/ruby/gems/*/gems/rdbg-* \
-           /usr/local/bundle/ruby/*/gems/debug-* \
-           /usr/local/lib/ruby/gems/*/gems/debug-* \
-           /usr/local/bundle/ruby/*/specifications/rdbg-*.gemspec \
-           /usr/local/bundle/bin/passenger* \
-           /usr/local/bundle/ruby/*/gems/passenger-* \
-           /usr/local/bundle/ruby/*/doc \
-           /usr/local/lib/ruby/gems/*/doc \
-           /usr/local/share \
-           /app/.git /app/coverage /app/tmp/* /app/log/* /app/.rspec /app/test /app/spec && \
-    find /usr/local/bundle/ -type d \( -name "cxx_supportlib" -o -name "ruby_native_extension" -o -name "apache2_module" -o -name "nodejs_supportlib" -o -name "nginx_module" -o -name "schema_printer" -o -name "agent" -o -name "download_cache" -o -name "libev" -o -name "libuv" \) -exec rm -rf {} + || true
+      /usr/local/bundle/cache \
+      /usr/local/lib/ruby/gems/*/cache \
+      /usr/local/bundle/gems/passenger-*/resources/templates/apache2 \
+      /usr/local/bundle/gems/passenger-*/resources/templates/standalone \
+      /usr/local/bundle/gems/passenger-*/resources/templates/installer_common \
+      /usr/local/bundle/gems/passenger-*/resources/templates/config \
+      /usr/local/bundle/gems/passenger-*/resources/templates/nginx \
+      /usr/local/bundle/ruby/*/gems/passenger-*/resources/templates/apache2 \
+      /usr/local/bundle/ruby/*/gems/passenger-*/resources/templates/standalone \
+      /usr/local/bundle/ruby/*/gems/passenger-*/resources/templates/installer_common \
+      /usr/local/bundle/ruby/*/gems/passenger-*/resources/templates/config \
+      /usr/local/bundle/ruby/*/gems/passenger-*/resources/templates/nginx \
+      /usr/local/bundle/gems/passenger-*/build \
+      /usr/local/bundle/gems/passenger-*/dev \
+      /usr/local/bundle/gems/passenger-*/configure \
+      /usr/local/bundle/gems/passenger-*/package.json \
+      /usr/local/bundle/gems/passenger-*/images \
+      /usr/local/bundle/gems/passenger-*/resources/update_check_client_cert.p12 \
+      /usr/local/bundle/gems/passenger-*/resources/update_check_client_cert.pem \
+      /usr/local/bundle/ruby/*/gems/passenger-*/build \
+      /usr/local/bundle/ruby/*/gems/passenger-*/dev \
+      /usr/local/bundle/ruby/*/gems/passenger-*/configure \
+      /usr/local/bundle/ruby/*/gems/passenger-*/package.json \
+      /usr/local/bundle/ruby/*/gems/passenger-*/images \
+      /usr/local/bundle/ruby/*/gems/passenger-*/resources/update_check_client_cert.p12 \
+      /usr/local/bundle/ruby/*/gems/rdoc-* \
+      /usr/local/lib/ruby/gems/*/gems/rdoc-* \
+      /usr/local/bundle/ruby/*/gems/irb-* \
+      /usr/local/lib/ruby/gems/*/gems/irb-* \
+      /usr/local/bundle/ruby/*/gems/typeprof-* \
+      /usr/local/lib/ruby/gems/*/gems/typeprof-* \
+      /usr/local/bundle/ruby/*/gems/rbs-* \
+      /usr/local/lib/ruby/gems/*/gems/rbs-* \
+      /usr/local/bundle/ruby/*/gems/syntax_suggest-* \
+      /usr/local/lib/ruby/gems/*/gems/syntax_suggest-* \
+      /usr/local/bundle/ruby/*/gems/test-unit-* \
+      /usr/local/lib/ruby/gems/*/gems/test-unit-* \
+      /usr/local/bundle/ruby/*/gems/minitest-* \
+      /usr/local/lib/ruby/gems/*/gems/minitest-* \
+      /usr/local/bundle/ruby/*/gems/rdbg-* \
+      /usr/local/lib/ruby/gems/*/gems/rdbg-* \
+      /usr/local/bundle/ruby/*/gems/debug-* \
+      /usr/local/lib/ruby/gems/*/gems/debug-* \
+      /usr/local/bundle/ruby/*/specifications/rdbg-*.gemspec \
+      /usr/local/bundle/bin/passenger* \
+      /usr/local/bundle/ruby/*/gems/passenger-* \
+      /usr/local/bundle/ruby/*/doc \
+      /usr/local/lib/ruby/gems/*/doc \
+      /usr/local/share \
+      /app/.git /app/coverage /app/tmp/* /app/log/* /app/.rspec /app/test /app/spec && \
+    find /usr/local/bundle/ -type d \( -name "cxx_supportlib" -o -name "ruby_native_extension" \
+      -o -name "apache2_module" -o -name "nodejs_supportlib" -o -name "nginx_module" -o -name "schema_printer" \
+      -o -name "agent" -o -name "download_cache" -o -name "libev" -o -name "libuv" \) -exec rm -rf {} + || true
 
 # 6. Paranoid Hyper-Minimization (The "Scratch Copy" Dependencies)
 # Extract exact physical paths of all dynamic OS libraries for passenger, ruby, nginx, and required utils
@@ -202,6 +225,10 @@ RUN mkdir -p /my_bin /my_sbin /my_lib /my_usr_bin && \
 # STAGE 2: Ultra-Minimal Production Image
 # ==========================================
 FROM scratch
+
+LABEL org.opencontainers.image.description="A Rails API served by Passenger inside nginx, built from scratch" \
+      org.opencontainers.image.source="https://github.com/VitaliiLazebnyi/minimal_docker_nginx" \
+      org.opencontainers.image.title="minimal_docker_nginx"
 
 ENV TZ=UTC \
     RAILS_ENV=production \

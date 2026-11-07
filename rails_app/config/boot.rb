@@ -1,6 +1,9 @@
-# typed: false
+# typed: strong
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 ENV['BUNDLE_GEMFILE'] ||= File.expand_path('../Gemfile', __dir__)
 
-require 'bundler/setup' # Set up gems listed in the Gemfile.
+# Set up the gems listed in the Gemfile.
+require 'bundler/setup'

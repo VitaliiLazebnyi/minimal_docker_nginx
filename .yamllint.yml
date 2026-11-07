@@ -1,0 +1,70 @@
+---
+# yamllint (https://yamllint.readthedocs.io) checks every YAML file of the repository with every rule enabled,
+# including the ones its default configuration leaves off, in strict mode (`yamllint --strict`: warnings fail too).
+# No rule is switched off inline (script/forbidden_suppressions.sh).
+extends: default
+
+locale: C.UTF-8
+
+rules:
+  anchors:
+    forbid-duplicated-anchors: true
+    forbid-undeclared-aliases: true
+    forbid-unused-anchors: true
+  braces:
+    forbid: non-empty
+  brackets:
+    forbid: non-empty
+  comments:
+    ignore-shebangs: false
+    min-spaces-from-content: 2
+    require-starting-space: true
+  comments-indentation: enable
+  document-end:
+    present: false
+  document-start:
+    present: true
+  empty-lines:
+    max: 1
+    max-end: 0
+    max-start: 0
+  empty-values:
+    forbid-in-block-mappings: true
+    forbid-in-block-sequences: true
+    forbid-in-flow-mappings: true
+  float-values:
+    forbid-inf: true
+    forbid-nan: true
+    forbid-scientific-notation: true
+    require-numeral-before-decimal: true
+  indentation:
+    check-multi-line-strings: true
+    indent-sequences: true
+    spaces: 2
+  key-duplicates:
+    forbid-duplicated-merge-keys: true
+  key-ordering: enable
+  # The same width as Ruby (RuboCop Layout/LineLength), Markdown (rumdl MD013) and every other file
+  # (.editorconfig). A word that cannot be broken (a digest-pinned image reference, a URL) may run past it: YAML
+  # has no way to split a plain scalar inside a word.
+  line-length:
+    allow-non-breakable-inline-mappings: false
+    allow-non-breakable-words: true
+    max: 120
+  new-line-at-end-of-file: enable
+  new-lines:
+    type: unix
+  octal-values:
+    forbid-explicit-octal: true
+    forbid-implicit-octal: true
+  quoted-strings:
+    allow-quoted-quotes: false
+    check-keys: true
+    quote-type: single
+    required: only-when-needed
+  trailing-spaces: enable
+  truthy:
+    allowed-values:
+      - 'false'
+      - 'true'
+    check-keys: true

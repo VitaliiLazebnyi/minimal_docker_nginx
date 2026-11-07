@@ -3,8 +3,6 @@
 This document is a comprehensive manual for aggressively optimizing and minimizing a Ruby production Docker image (such
 as an Alpine-based Nginx/Passenger container), achieving the smallest possible attack surface and storage footprint.
 
----
-
 ## 1. The Multi-Stage Build Architecture
 
 The golden rule of Docker minimization is **never ship your build environment to production**. Compiling Ruby or native
@@ -53,14 +51,14 @@ graph TD
     G -.->|COPY /usr/local/bundle| K
 ```
 
-### The System Dependencies Trap (`scanelf`)
+### The System Dependencies Trap
 
 A common mistake is copying compiled binaries to a fresh stage without copying the Alpine system libraries they linked
 against (e.g., `libssl.so`, `libyaml.so`). To seamlessly bridge this gap without guessing, we run `scanelf` in the
 Builder stage to dynamically crawl every compiled Ruby binary and generate an exact text list of Alpine packages to
 install in the final stage.
 
-#### How Alpine `so:` Virtual Providers Work
+#### How Alpine Virtual Providers Work
 
 Unlike Ubuntu/Debian (`apt-get`), which often installs hundreds of megabytes of documentation and GUI trash alongside
 libraries, Alpine Linux enforces a strict **Split-Package Policy**. Documentation is relegated to `-doc` packages, and
@@ -71,25 +69,23 @@ searches its registry for exactly which Alpine package provides that precise fil
 package. This completely eliminates the need to hardcode brittle package names (like `openssl` vs `libcrypto3`) inside
 your Dockerfile.
 
----
-
 ## 2. Anatomy of the Target Directories
 
 When mapping files from the Builder to the Final stage, you only care about three directories. Here is what they contain
 and what you can safely eliminate.
 
-### `A. /usr/local/bin/` (The Interfaces)
+### A. The Interfaces
 
-This directory holds the CLI binaries you execute. In modern production deployments, almost everything here aside from
-the core interpreter is dead-weight developer tooling.
+`/usr/local/bin/` holds the CLI binaries you execute. In modern production deployments, almost everything here aside
+from the core interpreter is dead-weight developer tooling.
 
 - **🟢 Keep:** `ruby`, `bundle`, `bundler` (Strictly required for Passenger/Puma).
 - **🔴 Delete:** `irb`, `gem`, `rdoc`, `ri`, `erb`, `minitest`, `test-unit`, `typeprof`.
 - **⚠️ Conditional:** `rake` (Only keep if your `ENTRYPOINT` script literally invokes `rake db:migrate`).
 
-### `B. /usr/local/lib/` (The Engine)
+### B. The Engine
 
-This directory contains the actual brains of the Ruby VM and the standard library.
+`/usr/local/lib/` contains the actual brains of the Ruby VM and the standard library.
 
 - **🟢 Keep (`libruby.so.X.X`):** The massive core Virtual Machine engine. If deleted, the `/usr/local/bin/ruby` wrapper
   will crash immediately.
@@ -99,12 +95,10 @@ This directory contains the actual brains of the Ruby VM and the standard librar
 - **🔴 Delete (Default Dev Gems):** Deep inside `/usr/local/lib/ruby/gems/*/gems/`, Ruby ships built-in dev tools
   (`minitest`, `rdoc`, `debug`, `typeprof`) that you can aggressively purge along with their `.gemspec` files.
 
-### `C. /usr/local/bundle/` (The Third-Party Logic)
+### C. The Third-Party Logic
 
-Assuming `GEM_HOME=/usr/local/bundle`, this isolates all your `Gemfile` dependencies. We copy this entirely, but first
-apply aggressive C-compilation cleanup sequences.
-
----
+Assuming `GEM_HOME=/usr/local/bundle`, `/usr/local/bundle/` isolates all your `Gemfile` dependencies. We copy this
+entirely, but first apply aggressive C-compilation cleanup sequences.
 
 ## 3. The "Dirty Secret" of RubyGems (C-Compiler Trash)
 
@@ -121,8 +115,6 @@ everything left in `ext/` is 100% garbage. This includes:
 
 We aggressively delete these using wildcard `find` blacklists.
 
----
-
 ## 4. Why Blacklisting Beats Whitelisting
 
 When minimizing images, always use a **Blacklist** (telling the system exactly what useless files to violently delete,
@@ -131,12 +123,10 @@ like `*.o` and `Makefile`).
 Do not use a **Whitelist** (telling the system to delete everything that isn't `.rb` or `.so`). Ruby gems are notorious
 for shipping with bizarre file extensions they strictly require at runtime:
 
-1. **Extensionless Files:** Binaries like `puma` do not have extensions. A naive whitelist will delete your web server.
-2. **Database Artifacts:** The `mime-types` gem ships with massive `.json` databases.
-3. **Security Artifacts:** Gems like `grpc` ship with `.pem` root certificates. If a whitelist accidentally deletes
-   these, your application will fatally crash in production with `Errno::ENOENT`.
-
----
+- **Extensionless Files:** Binaries like `puma` do not have extensions. A naive whitelist will delete your web server.
+- **Database Artifacts:** The `mime-types` gem ships with massive `.json` databases.
+- **Security Artifacts:** Gems like `grpc` ship with `.pem` root certificates. If a whitelist accidentally deletes
+  these, your application will fatally crash in production with `Errno::ENOENT`.
 
 ## 5. The Ultimate Minimization Dockerfile Template
 
@@ -241,8 +231,6 @@ HEALTHCHECK --interval=30s --timeout=3s CMD wget --spider -q http://localhost:80
 CMD ["bundle", "exec", "passenger", "start"]
 ```
 
----
-
 ## 6. Paranoid Hyper-Minimization (The "Scratch Copy")
 
 If your goal is mathematically perfect minimization and you want to completely bypass `apk add` in the Final stage
@@ -266,9 +254,7 @@ COPY --from=builder /usr/local/lib /usr/local/lib
 COPY --from=builder /usr/local/bundle /usr/local/bundle
 ```
 
----
-
-## 7. The Absolute Limit: UPX & `scratch` Images
+## 7. The Absolute Limit: UPX & Images Built from Scratch
 
 If you are trying to push your image to the physical limits of minimal computing, there are two final "Dark Arts" of
 Docker optimization. These techniques carry significant production penalties and should be applied fully understanding
@@ -297,7 +283,7 @@ find /usr/local -name "*.so*" -exec upx --best {} \+
   debugging tools like `gdb` cannot read core dumps generated by a crashed UPX process.
 - **Verdict:** **Do not use UPX for cloud web servers.** It is strictly meant for embedded IoT limit-cases.
 
-### B. The `FROM scratch` Base (Killing the OS)
+### B. The Empty Base Image (Killing the OS)
 
 **The Technique:** In Stage 2, instead of using `FROM alpine:3.23`, you use `FROM scratch` (an empty, zero-byte void).
 You then use the "Scratch Copy" trick (from Section 6) to copy in your required OS `.so` libraries.

@@ -1,18 +1,19 @@
-usage: opensource
-integration:
-  name: rspec
+---
+coverage_criteria:
+  process_abort: true
 environment_variables:
   RAILS_ENV: test
-requires:
-  - ./config/environment
 includes:
   - app
   - spec
+integration:
+  name: rspec
 matcher:
   subjects:
     - ApplicationController*
     - HealthController*
 mutation:
   timeout: 20.0
-coverage_criteria:
-  process_abort: true
+requires:
+  - ./config/environment
+usage: opensource

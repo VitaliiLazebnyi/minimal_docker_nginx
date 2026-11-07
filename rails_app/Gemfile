@@ -1,21 +1,29 @@
 # frozen_string_literal: true
 
+# Copyright (c) 2026 Vitalii Lazebnyi
+
 source 'https://rubygems.org'
 
+# The application server inside the image: Passenger runs the application as an nginx module.
 gem 'passenger', '~> 6.2'
 # Only the frameworks config/application.rb loads, instead of the `rails` meta-gem (which also installs Action
 # Cable, Action Mailer, Action Mailbox, Action Text, Active Job and Active Storage, none of which the API uses).
+# Action Pack: routing and the API controllers.
 gem 'actionpack', '~> 8.1.4'
+# Action View: the JSON rendering of the controllers.
 gem 'actionview', '~> 8.1.4'
+# Active Model: required by Active Record and by Action Pack's parameter handling.
 gem 'activemodel', '~> 8.1.4'
+# Active Record: the SQLite connection that Rails' health check and the test schema use.
 gem 'activerecord', '~> 8.1.4'
+# Active Support: the core extensions and the configuration helpers of every framework.
 gem 'activesupport', '~> 8.1.4'
+# Railties: the application, its configuration and the rails/rake commands.
 gem 'railties', '~> 8.1.4'
-# Runtime half of the Sorbet signatures in app/ (`extend T::Sig`, `sig { ... }`).
+# Runtime half of the Sorbet signatures (`extend T::Sig`, `sig { ... }`), checked on every call.
 gem 'sorbet-runtime', '~> 0.6'
+# The SQLite driver of Active Record (config/database.yml, DATABASE_URL in the image).
 gem 'sqlite3', '~> 2.10'
-# Windows does not include zoneinfo files, so bundle the tzinfo-data gem
-gem 'tzinfo-data', platforms: %i[windows jruby]
 
 group :development do
   # `bin/dev` (rails server) for local development; production is served by Passenger.
@@ -23,26 +31,54 @@ group :development do
 end
 
 group :development, :test do
+  # The test framework, with request specs against the whole Rails stack.
   gem 'rspec-rails', '~> 8.0'
+  # Line and branch coverage, failed below 100% (spec/spec_helper.rb).
   gem 'simplecov', '~> 1.3', require: false
 
   # Quality tooling: linting, typing, documentation, smells, mutation testing, security audits.
+  # Security static analysis of the application (`rake brakeman`).
   gem 'brakeman', '~> 8.1', require: false
+  # Known vulnerabilities of the locked gems (`rake audit`).
   gem 'bundler-audit', '~> 0.9', require: false
+  # Methods nothing calls (`rake debride`).
+  gem 'debride', '~> 1.15', require: false
+  # Structural duplication (`rake flay`).
   gem 'flay', '~> 2.14', require: false
+  # Method complexity (`rake flog`).
+  gem 'flog', '~> 4.9', require: false
+  # Mutation testing with RSpec (`rake mutant`): every mutation must be killed.
   gem 'mutant-rspec', '~> 0.17', require: false
+  # Code smells (`rake reek`).
   gem 'reek', '~> 6.6', require: false
+  # The linter and formatter (`rake rubocop`), with every cop of every plugin below enabled (.rubocop.yml).
   gem 'rubocop', '~> 1.92', require: false
+  # Cops for comment and code patterns of AI generators.
+  gem 'rubocop-ai', '~> 0.2', require: false
+  # Cops for the Ruby code blocks of the Markdown files.
   gem 'rubocop-md', '~> 3.0', require: false
+  # Cops for slow Ruby idioms.
   gem 'rubocop-performance', '~> 1.27', require: false
+  # Cops for Rails.
   gem 'rubocop-rails', '~> 2.38', require: false
+  # Cops for Rakefiles and rake tasks.
   gem 'rubocop-rake', '~> 0.7', require: false
+  # Cops for RSpec.
   gem 'rubocop-rspec', '~> 3.10', require: false
+  # Cops for rspec-rails.
   gem 'rubocop-rspec_rails', '~> 2.33', require: false
+  # Cops for Sorbet sigils and signatures.
   gem 'rubocop-sorbet', '~> 0.17', require: false
+  # Cops for code that is unsafe under threads.
   gem 'rubocop-thread_safety', '~> 0.8', require: false
+  # Cops for YARD documentation tags.
+  gem 'rubocop-yard', '~> 1.3', require: false
+  # The static type checker (`rake typecheck`).
   gem 'sorbet', '~> 0.6', require: false
+  # Generates the gem and DSL RBIs Sorbet checks against (`rake typecheck`).
   gem 'tapioca', '~> 0.20', require: false
+  # The documentation generator, failed below 100% documented (`rake yard`).
   gem 'yard', '~> 0.9', require: false
+  # Reads the Sorbet signatures into the YARD documentation.
   gem 'yard-sorbet', '~> 0.9', require: false
 end

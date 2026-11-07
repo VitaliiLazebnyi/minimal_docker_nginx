@@ -1,67 +1,89 @@
-name: Lint
-
-on:
-  push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
-
-permissions: {}
+---
+# The repository itself: workflows (actionlint, with ShellCheck on every run: block; zizmor, pedantic persona,
+# with its online audits), shell scripts (ShellCheck with every optional check; shfmt), spelling (typos),
+# Markdown (rumdl, every rule), YAML (yamllint, every rule, strict), EditorConfig and inline suppressions.
+# The linters come from tools/requirements.txt (pinned with hashes) and tools/binaries.json (pinned by SHA-256).
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
-  # Workflows (actionlint, with ShellCheck on every run: block; zizmor, pedantic persona), shell scripts
-  # (ShellCheck with every optional check, .shellcheckrc), spelling (typos) and inline suppressions.
-  # The tools are installed from tools/requirements.txt, pinned with hashes.
   lint:
-    name: actionlint, zizmor, ShellCheck, typos, rumdl, suppressions
-    runs-on: ubuntu-26.04
+    name: Repository linters
     permissions:
       contents: read
+    runs-on: ubuntu-26.04
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        persist-credentials: false
-
-    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
-      with:
-        python-version: 3.x
-    - name: Install the linters
-      run: python -m pip install --quiet --disable-pip-version-check --require-hashes -r tools/requirements.txt
-    - name: actionlint
-      run: actionlint -color
-    - name: zizmor
-      env:
-        GH_TOKEN: ${{ github.token }} # online audits (known-vulnerable actions, impostor commits)
-      run: zizmor --persona pedantic --format plain .github/workflows
-    - name: ShellCheck
-      run: shellcheck script/*.sh test/image/*.sh docker_config/entrypoint.sh .githooks/pre-commit
-    - name: typos
-      run: typos
-    - name: rumdl (markdownlint rules, .rumdl.toml)
-      run: rumdl check --deny-config-warnings .
-    - name: Forbid inline suppressions
-      run: script/forbidden_suppressions.sh
+      - name: Harden the runner (egress allow-list)
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
+        with:
+          allowed-endpoints: >-
+            api.github.com:443
+            files.pythonhosted.org:443
+            github.com:443
+            objects.githubusercontent.com:443
+            pypi.org:443
+            raw.githubusercontent.com:443
+            release-assets.githubusercontent.com:443
+          disable-sudo: true
+          egress-policy: block
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0  # v7.1.0
+        with:
+          python-version: 3.x
+      - name: Install the linters (tools/requirements.txt)
+        run: python -m pip install --quiet --disable-pip-version-check --require-hashes -r tools/requirements.txt
+      - name: Install the linters (tools/binaries.json)
+        run: script/install_binaries.sh
+      - env:
+          GH_TOKEN: ${{ github.token }}  # zizmor: online audits (known-vulnerable actions, impostor commits)
+        name: script/check suppressions actionlint zizmor shellcheck shfmt typos rumdl yamllint editorconfig
+        run: script/check suppressions actionlint zizmor shellcheck shfmt typos rumdl yamllint editorconfig
+    timeout-minutes: 10
 
   warning-gate:
-    name: Warning gate
     if: ${{ !cancelled() }}
-    needs: [lint]
-    runs-on: ubuntu-26.04
+    name: Warning gate (Lint)
+    needs:
+      - lint
     permissions:
-      actions: read # reads the logs of the other jobs of this run
+      actions: read  # reads the logs of the other jobs of this run
       contents: read
+    runs-on: ubuntu-26.04
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      with:
-        persist-credentials: false
+      - name: Harden the runner (egress allow-list)
+        uses: step-security/harden-runner@1d88384fd173af6ecb012dfd0264a306b711241a  # v2.22.4
+        with:
+          allowed-endpoints: >-
+            *.actions.githubusercontent.com:443
+            *.blob.core.windows.net:443
+            api.github.com:443
+            github.com:443
+          disable-sudo: true
+          egress-policy: block
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - env:
+          GATE_JOB_NAME: Warning gate (Lint)
+          GH_TOKEN: ${{ github.token }}
+        name: Fail on any warning or deprecation in the logs of this run
+        run: script/warning_gate.sh
+    timeout-minutes: 10
 
-    - name: Fail on any warning or deprecation in the logs of this run
-      env:
-        GH_TOKEN: ${{ github.token }}
-        GATE_JOB_NAME: Warning gate
-      run: script/warning_gate.sh
+name: Lint
+
+'on':
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+# Nothing is writable by default; every job declares the (read-only, unless stated) permissions it needs.
+permissions: {}

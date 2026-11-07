@@ -1,6 +1,8 @@
 #!/usr/bin/env ruby
-# typed: strict
+# typed: strong
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 # Fails when a dependency of this repository is not at its newest release and is not on the documented hold
 # list (script/outdated_holds.yml), or when a listed hold is no longer needed. It covers the gems and Bundler
@@ -11,7 +13,6 @@
 # and the installed Passenger gem).
 
 require 'sorbet-runtime'
-require 'yaml'
 
 require_relative 'outdated/actions'
 require_relative 'outdated/bundle'
@@ -31,7 +32,7 @@ module Outdated
   sig { returns(Integer) }
   def self.run
     report = Report.new
-    checks(report, YAML.safe_load_file(File.join(ROOT, 'script', 'outdated_holds.yml'))).each(&:check)
+    checks(report, Document.load(File.join(ROOT, 'script', 'outdated_holds.yml'))).each(&:check)
     report.status
   end
 
@@ -53,4 +54,4 @@ module Outdated
   end
 end
 
-exit(Outdated.run) if $PROGRAM_NAME == __FILE__
+exit(Outdated.run) if T.let($PROGRAM_NAME, String) == __FILE__
