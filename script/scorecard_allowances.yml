@@ -1,0 +1,11 @@
+# Dependencies added by this repository whose OpenSSF Scorecard (https://scorecard.dev) is below the threshold
+# (3.0) of script/scorecards.rb, which the Dependency review job runs on every pull request. Each entry is one
+# package ("ecosystem/name", as dependency review names it) with the reason it cannot be dropped or replaced; the
+# check fails for any other low-scoring package, and for an entry whose package left every lockfile or whose score
+# reached the threshold. Scores checked on 2026-10-29.
+rubygems/ruby-progressbar:
+  score: 2.8
+  reason: >-
+    A runtime dependency of rubocop 1.92.1 (ruby-progressbar ~> 1.7), the linter every gate of this repository
+    runs; RuboCop has no variant without it. Development and CI only: it is not installed in the image
+    (BUNDLE_WITHOUT=development:test).

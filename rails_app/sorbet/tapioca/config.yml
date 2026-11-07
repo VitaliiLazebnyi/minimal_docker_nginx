@@ -1,0 +1,17 @@
+gem:
+  exclude:
+  # Reek and the dry-rb gems it depends on are development tools that no checked file refers to. Compiling
+  # their RBIs touches constants that dry-rb has deprecated, which prints deprecation notices.
+  - dry-configurable
+  - dry-core
+  - dry-inflector
+  - dry-initializer
+  - dry-logic
+  - dry-schema
+  - dry-types
+  - reek
+  # RDoc (a dependency of the development tools) redefines classes that Sorbet's own payload declares with
+  # another superclass; no checked file uses RDoc, so its RBI is not generated instead of suppressing the error.
+  - rdoc
+dsl:
+  exclude: []

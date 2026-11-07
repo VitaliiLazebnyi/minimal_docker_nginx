@@ -1,24 +1,10 @@
-# README
+# Rails application
 
-This README would normally document whatever steps are necessary to get the
-application up and running.
+The API-only Rails application served by Passenger in the Docker image of this repository (see the
+[README](../README.md) of the repository).
 
-Things you may want to cover:
+- `GET /health` answers `{"status":"OK"}` (probed by the Docker `HEALTHCHECK`).
+- `GET /up` is Rails' own liveness check.
 
-* Ruby version
-
-* System dependencies
-
-* Configuration
-
-* Database creation
-
-* Database initialization
-
-* How to run the test suite
-
-* Services (job queues, cache servers, search engines, etc.)
-
-* Deployment instructions
-
-* ...
+Ruby version: `.ruby-version`. Set up and run it locally with `bin/setup`; run every quality gate with
+`bundle exec rake` (see [CONTRIBUTING.md](../CONTRIBUTING.md)).

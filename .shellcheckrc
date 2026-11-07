@@ -1,0 +1,2 @@
+# Every optional check is enabled, and no check is switched off inline (see CONTRIBUTING.md).
+enable=all

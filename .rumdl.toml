@@ -1,0 +1,14 @@
+# rumdl (https://github.com/rvben/rumdl) lints every Markdown file with all of its markdownlint-compatible rules;
+# there are no inline disable comments.
+[global]
+# Prose and tables are wrapped at the same width as the code (RuboCop Layout/LineLength).
+line-length = 120
+respect-gitignore = true
+
+[MD013]
+line-length = 120
+tables = false
+
+# Lists use dashes everywhere.
+[MD004]
+style = "dash"

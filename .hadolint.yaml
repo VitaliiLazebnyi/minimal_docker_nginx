@@ -1,0 +1,9 @@
+# Every finding fails the build (info and style included). No rule is switched off inline in the Dockerfile.
+failure-threshold: info
+ignored:
+  # DL3018 (pin versions in `apk add`): the base image is pinned by digest, but Alpine's repositories keep
+  # only the newest build of each package of a release branch, so a pinned `pkg=version` stops resolving as
+  # soon as Alpine publishes a security fix and the image could no longer be rebuilt. The packages are the
+  # current builds of the pinned Alpine release; the final image is scanned by Trivy and Grype, which fail on
+  # any fixable vulnerability, and `rake outdated` fails when a newer Alpine release exists.
+  - DL3018

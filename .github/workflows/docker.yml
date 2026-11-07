@@ -1,0 +1,180 @@
+name: Docker image
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '43 5 * * 1' # new vulnerabilities are published every day: rescan the image weekly
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: minimal-docker-nginx:ci
+  HADOLINT_IMAGE: hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d
+  TRIVY_IMAGE: aquasec/trivy:0.76.1@sha256:790fd66d1697395d8693d1acaa1ea702406a20f109b6fc7bac8db623eca6c06c
+  GRYPE_IMAGE: anchore/grype:v0.121.0@sha256:621d56d1d68106b787022c81546f7e0a36202a25d1239f0c20195fab8c16f7ea
+  DOCKLE_IMAGE: goodwithtech/dockle:v0.4.15@sha256:eade932f793742de0aa8755406c7677cd7696f8675b6180926f7eeffa7abe6b9
+  STRUCTURE_TEST_IMAGE: ghcr.io/googlecontainertools/container-structure-test:1.22.1@sha256:710da3ca8ed29a42423315592f74f02df4e3d2ba19f1df7257bd481ea75ba5aa
+
+jobs:
+  # The Dockerfile itself: hadolint (every finding fails, .hadolint.yaml), BuildKit's build checks, and
+  # Trivy's misconfiguration rules for Dockerfiles.
+  dockerfile:
+    name: hadolint, build checks, Trivy config
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: hadolint
+      run: docker run --rm --volume "$PWD:/repository:ro" --workdir /repository "$HADOLINT_IMAGE" hadolint Dockerfile
+    - name: BuildKit build checks
+      run: docker buildx build --check .
+    - name: Trivy misconfiguration scan
+      run: >-
+        docker run --rm --volume "$PWD:/repository:ro" "$TRIVY_IMAGE"
+        config --exit-code 1 --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL /repository
+
+  image:
+    name: Build, test and scan the image
+    runs-on: ubuntu-26.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+    # The image is compiled with -march=native (REQ-COMP-001): cached layers may only be reused on the same
+    # CPU model, or the binaries could use instructions this runner lacks.
+    - name: Identify the CPU model
+      id: cpu
+      run: echo "model=$(grep -m 1 '^model name' /proc/cpuinfo | sha256sum | cut -c 1-16)" >> "$GITHUB_OUTPUT"
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: cache
+      with:
+        path: ${{ runner.temp }}/buildx-cache
+        key: image-${{ steps.cpu.outputs.model }}-${{ hashFiles('Dockerfile', '.dockerignore', 'docker_config/**', 'rails_app/**') }}
+        restore-keys: image-${{ steps.cpu.outputs.model }}-
+
+    # The compiler output of Ruby, nginx and Passenger (third-party C code, with its own diagnostics) goes to
+    # the build-log artifact instead of the job log; the Dockerfile's own warnings are gated by the build
+    # checks of the dockerfile job. The end of the log is printed when the build fails.
+    - name: Build the image
+      run: |
+        status=0
+        docker buildx build --load --tag "$IMAGE" --progress plain \
+          --cache-from "type=local,src=$RUNNER_TEMP/buildx-cache" \
+          --cache-to "type=local,dest=$RUNNER_TEMP/buildx-cache-new,mode=max" \
+          . > "$RUNNER_TEMP/build.log" 2>&1 || status=$?
+        if [ "$status" -ne 0 ]; then
+          tail -n 150 "$RUNNER_TEMP/build.log"
+          exit "$status"
+        fi
+        rm -rf "$RUNNER_TEMP/buildx-cache"
+        mv "$RUNNER_TEMP/buildx-cache-new" "$RUNNER_TEMP/buildx-cache"
+        docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}' "$IMAGE"
+    # Saved as soon as the build succeeds (not at the end of the job), so a failing test or scan does not cost
+    # the next run a full rebuild.
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: steps.cache.outputs.cache-hit != 'true'
+      with:
+        path: ${{ runner.temp }}/buildx-cache
+        key: ${{ steps.cache.outputs.cache-primary-key }}
+    - name: Export the image and list its files
+      run: |
+        mkdir -p "$RUNNER_TEMP/reports"
+        docker save "$IMAGE" --output "$RUNNER_TEMP/image.tar"
+        container=$(docker create "$IMAGE")
+        docker export "$container" | tar -tv | sort -k 6 > "$RUNNER_TEMP/reports/container_filesystem.txt"
+        docker cp "$container:/opt/nginx/conf" "$RUNNER_TEMP/nginx-conf"
+        docker rm "$container"
+        wc -l "$RUNNER_TEMP/reports/container_filesystem.txt"
+
+    - name: container-structure-test (test/image/structure-tests.yaml)
+      run: >-
+        docker run --rm --volume /var/run/docker.sock:/var/run/docker.sock
+        --volume "$PWD/test/image:/tests:ro" "$STRUCTURE_TEST_IMAGE"
+        test --image "$IMAGE" --config /tests/structure-tests.yaml
+    - name: Smoke test (health, unprivileged processes, log rotation)
+      run: test/image/smoke_test.sh "$IMAGE"
+
+    # Dockle checks the image against the CIS Docker benchmark; every level fails (DOCKER_CONTENT_TRUST is
+    # what CIS-DI-0005 asks for when images are pulled and pushed).
+    - name: Dockle
+      run: >-
+        docker run --rm --volume "$RUNNER_TEMP:/scan:ro" --env DOCKER_CONTENT_TRUST=1 "$DOCKLE_IMAGE"
+        --exit-code 1 --exit-level info --input /scan/image.tar
+    - name: Trivy (fails on any fixable vulnerability, and on secrets)
+      run: |
+        status=0
+        docker run --rm --volume "$RUNNER_TEMP:/scan" "$TRIVY_IMAGE" image --input /scan/image.tar \
+          --scanners vuln,secret --ignore-unfixed --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL \
+          --exit-code 1 --no-progress --format table --output /scan/reports/TRIVY_REPORT.txt || status=$?
+        cat "$RUNNER_TEMP/reports/TRIVY_REPORT.txt"
+        exit "$status"
+    - name: Grype (fails on any fixable vulnerability)
+      env:
+        GRYPE_CHECK_FOR_APP_UPDATE: 'false'
+      run: |
+        status=0
+        docker run --rm --volume "$RUNNER_TEMP:/scan" --env GRYPE_CHECK_FOR_APP_UPDATE "$GRYPE_IMAGE" \
+          docker-archive:/scan/image.tar --only-fixed --fail-on negligible --quiet \
+          --output table --file /scan/reports/GRYPE_REPORT.txt || status=$?
+        cat "$RUNNER_TEMP/reports/GRYPE_REPORT.txt"
+        exit "$status"
+
+    # gixy checks the rendered nginx.conf of the image for misconfigurations; the include of mime.types is
+    # resolved at the path nginx uses.
+    - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      with:
+        python-version: 3.x
+    - name: Install gixy (tools/requirements.txt)
+      run: python -m pip install --quiet --disable-pip-version-check --require-hashes -r tools/requirements.txt
+    - name: gixy
+      run: |
+        sudo mkdir -p /opt/nginx
+        sudo cp -R "$RUNNER_TEMP/nginx-conf" /opt/nginx/conf
+        gixy /opt/nginx/conf/nginx.conf
+
+    - name: Upload the reports and the build log
+      if: ${{ !cancelled() }}
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: image-reports
+        path: |
+          ${{ runner.temp }}/reports
+          ${{ runner.temp }}/build.log
+        if-no-files-found: ignore
+
+  warning-gate:
+    name: Warning gate
+    if: ${{ !cancelled() }}
+    needs: [dockerfile, image]
+    runs-on: ubuntu-26.04
+    permissions:
+      actions: read # reads the logs of the other jobs of this run
+      contents: read
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+
+    - name: Fail on any warning or deprecation in the logs of this run
+      env:
+        GH_TOKEN: ${{ github.token }}
+        GATE_JOB_NAME: Warning gate
+      run: script/warning_gate.sh

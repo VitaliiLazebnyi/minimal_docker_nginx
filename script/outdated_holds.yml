@@ -1,0 +1,32 @@
+# Dependencies that are deliberately NOT at their newest release, each with the reason.
+# `rake outdated` (script/outdated.rb) fails for any other outdated dependency (gems, Ruby, nginx, Bundler,
+# RubyGems, Docker images, GitHub Actions, Python tools), and for a hold that is no longer needed.
+# Every gem entry quotes the exact blocking constraint (checked against rubygems.org on 2026-10-28).
+gems:
+  diff-lcs:
+    newest: 2.0.0
+    blocked_by:
+      - 'rspec-expectations 3.13.5: diff-lcs >= 1.2.0, < 2.0'
+      - 'rspec-mocks 3.13.8: diff-lcs >= 1.2.0, < 2.0'
+  prism:
+    newest: 2.1.0
+    blocked_by:
+      - 'rubocop-ast 1.50.0: prism ~> 1.7'
+      - 'flay 2.14.4: prism ~> 1.7'
+      - 'minitest 6.0.6: prism ~> 1.5'
+      - 'rbi 0.5.0: prism ~> 1.0'
+
+# Ruby release lines used besides the newest Ruby; each must still be at its newest patch release.
+ruby_lines:
+  '3.3':
+    used_by: .github/workflows/mutation.yml
+    reason: >-
+      mutant 0.17.1 (the newest release) requires `parser/current` unconditionally (lib/mutant.rb:35, and
+      Parser::CurrentRuby in lib/mutant/expression/method.rb:72). The newest parser gem, 3.3.13.0, has no grammar
+      for Ruby 3.4 or 4.0: lib/parser/current.rb falls back to its Ruby 3.3 grammar and prints "warning:
+      parser/current is loading parser/ruby33, which recognizes 3.3.x-compliant syntax, but you are running
+      4.0.9" on Ruby 4.0. On Ruby 4.0, unparser 0.9.0 also warns under -W:performance
+      (lib/unparser/either.rb:67, "the block passed to 'require_block' ... may be ignored"). Both warnings come
+      from the gems themselves, so mutation testing runs on the newest Ruby 3.3, where neither is printed;
+      everything else runs on the newest Ruby.
+
