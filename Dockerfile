@@ -3,13 +3,13 @@
 # ==========================================
 # Pinned by digest; Dependabot (docker) proposes updates and `rake outdated` fails when the tag has moved
 # or a newer Ruby/Alpine release exists (see script/outdated_holds.yml).
-FROM ruby:4.0.9-alpine3.24@sha256:d0c5befc0864d31c6219321c8d79de2941d1bc31c41505d9c9289c6192c36d60 AS builder
+FROM ruby:4.0.9-alpine3.24@sha256:8ad6909db16ad53b5dc90bb8cc157e5fdd89ba1172798316b95cfd2a61f14b1e AS builder
 
 # Every RUN below uses pipes; without pipefail a failing producer would go unnoticed.
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
 
 # The newest RubyGems, installed over the one Ruby ships with (checked by `rake outdated`).
-ARG RUBYGEMS_VERSION=4.0.23
+ARG RUBYGEMS_VERSION=4.0.24
 # Must match the passenger entry of rails_app/Gemfile.lock (checked by `rake outdated`).
 ARG PASSENGER_VERSION=6.2.1
 # The newest nginx release (mainline; checked by `rake outdated`). The SHA-256 is the one the FreeBSD ports tree
