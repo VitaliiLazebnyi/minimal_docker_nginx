@@ -1,6 +1,8 @@
 #!/usr/bin/env ruby
-# typed: strict
+# typed: strong
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 # Fails when a pull request adds a dependency whose OpenSSF Scorecard (https://scorecard.dev) is below THRESHOLD and
 # that is not explicitly allowed, with its reason, in script/scorecard_allowances.yml. Also fails when an allowance is
@@ -11,10 +13,8 @@
 # Scores are looked up the way the action does: the repository URL of the change (deps.dev when it has none), then
 # api.securityscorecards.dev.
 
-require 'json'
 require 'sorbet-runtime'
 require 'uri'
-require 'yaml'
 
 require_relative 'outdated/document'
 require_relative 'outdated/http'
@@ -37,7 +37,7 @@ module Scorecards
     # @return [Allowances] the allowances of script/scorecard_allowances.yml
     sig { returns(Allowances) }
     def self.load
-      new(YAML.safe_load_file(File.join(Outdated::ROOT, 'script', 'scorecard_allowances.yml')))
+      new(Outdated::Document.load(File.join(Outdated::ROOT, 'script', 'scorecard_allowances.yml')))
     end
 
     # @param document [Object] the parsed allowance file
@@ -71,7 +71,8 @@ module Scorecards
     # @param report [Outdated::Report]
     sig { params(report: Outdated::Report).void }
     def check_locked(report)
-      locked = LOCKFILES.map { |path| File.read(File.join(Outdated::ROOT, path)) }.join("\n")
+      locked = LOCKFILES.map { |path| File.read(File.join(Outdated::ROOT, path)) }
+                        .join("\n")
       Outdated::Document.keys(@document, []).each do |key|
         name = Regexp.escape(key.split('/', 2).last.to_s)
         report.problem("stale allowance: #{key} is in no lockfile") unless locked.match?(/^\s*#{name}[ (=]/)
@@ -102,8 +103,12 @@ module Scorecards
     def self.from(change)
       repository = Outdated::Document.at(change, ['source_repository_url'])
       field = ->(key) { Outdated::Document.string(change, [key]) }
-      new(ecosystem: field.call('ecosystem'), name: field.call('name'), version: field.call('version'),
-          repository: repository.is_a?(String) ? repository : '')
+      new(
+        ecosystem: field.call('ecosystem'),
+        name: field.call('name'),
+        version: field.call('version'),
+        repository: repository.is_a?(String) ? repository : ''
+      )
     end
 
     # "ecosystem/name", the key of script/scorecard_allowances.yml.
@@ -142,7 +147,7 @@ module Scorecards
 
       path = [ecosystem, 'packages', name, 'versions', version].map { |part| URI.encode_uri_component(part) }
       response = Outdated::Http.find("https://api.deps.dev/v3/systems/#{path.join('/')}")
-      Scorecards.first_project(JSON.parse(response.body.to_s)) if response
+      Scorecards.first_project(Outdated::Document.parse(response.body.to_s)) if response
     end
   end
 
@@ -151,9 +156,11 @@ module Scorecards
   # @return [String, nil]
   sig { params(document: Object).returns(T.nilable(String)) }
   def self.first_project(document)
-    projects = Outdated::Document.key?(document,
-                                       ['relatedProjects']) && Outdated::Document.at(document, ['relatedProjects'])
-    first = projects.is_a?(Array) ? projects.first : nil
+    projects = Outdated::Document.key?(
+      document,
+      ['relatedProjects']
+    ) && Outdated::Document.at(document, ['relatedProjects'])
+    first = projects.is_a?(Array) ? T.let(projects.first, Object) : nil
     Outdated::Document.string(first, %w[projectKey id]) if first
   end
 
@@ -163,7 +170,7 @@ module Scorecards
   sig { params(project: String).returns(T.nilable(Float)) }
   def self.score(project)
     response = Outdated::Http.find("https://api.securityscorecards.dev/projects/#{project}")
-    value = response && Outdated::Document.at(JSON.parse(response.body.to_s), ['score'])
+    value = response && Outdated::Document.at(Outdated::Document.parse(response.body.to_s), ['score'])
     Float(value) if value.is_a?(Numeric)
   end
 
@@ -172,10 +179,11 @@ module Scorecards
   # @return [Array<Dependency>]
   sig { params(json: String).returns(T::Array[Dependency]) }
   def self.added(json)
-    changes = JSON.parse(json)
+    changes = Outdated::Document.parse(json)
     return [] unless changes.is_a?(Array)
 
-    changes.filter_map do |change|
+    changes.filter_map do |item|
+      change = T.let(item, Object)
       Dependency.from(change) if Outdated::Document.string(change, ['change_type']) == 'added'
     end
   end
@@ -200,4 +208,4 @@ module Scorecards
   end
 end
 
-exit(Scorecards.run) if $PROGRAM_NAME == __FILE__
+exit(Scorecards.run) if T.let($PROGRAM_NAME, String) == __FILE__

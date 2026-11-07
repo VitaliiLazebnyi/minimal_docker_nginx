@@ -4,91 +4,78 @@ Bug reports and pull requests are welcome on GitHub at <https://github.com/Vital
 Behavioral defects are tracked in [BUGS.md](BUGS.md) against the requirement they break
 ([REQUIREMENTS.md](REQUIREMENTS.md)).
 
-## Getting started
+## Getting Started
 
 The Rails application lives in `rails_app/` and develops on the Ruby in `rails_app/.ruby-version`.
 
 ```bash
 cd rails_app && bundle install && cd ..
-python3 -m pip install --require-hashes -r tools/requirements.txt   # actionlint, gixy, rumdl, ShellCheck, typos, zizmor
-git config core.hooksPath .githooks   # optional: run the fast gates before every commit
+# actionlint, gixy, rumdl, ShellCheck, typos, yamllint, zizmor:
+python3 -m pip install --require-hashes -r tools/requirements.txt
+# shfmt and editorconfig-checker (Linux x86-64; elsewhere, the release of tools/binaries.json):
+TOOLS_DIR="$HOME/.local/bin" script/install_binaries.sh
+git config core.hooksPath .githooks   # optional: run the fast checks before every commit
 ```
 
-## Before opening a pull request
-
-Every gate below is enforced in CI and fails the build.
-
-### Rails application (`rails_app/`)
+## Before Opening a Pull Request
 
 ```bash
-cd rails_app
-bundle exec rake
+script/check                  # every check, in order
+script/check rubocop yamllint # or only the named ones
 ```
 
-That runs, in order:
+`script/check` is what every CI job runs (each step names its checks), so a local run checks exactly what CI checks.
+Every check fails the build:
 
-| Task | Gate |
-| --- | --- |
-| `rake spec` | RSpec; 100% line **and** branch coverage (SimpleCov), no pending or skipped example, no Ruby warning from the application or the specs, Rails deprecations raise |
-| `rake rubocop` | RuboCop with the rails, rspec, rspec_rails, performance, rake, sorbet, thread_safety and md plugins (`.rubocop.yml`), on the application and on `script/`; no todo file |
-| `rake suppressions` | no inline suppression anywhere (`script/forbidden_suppressions.sh`, see below) |
-| `rake typecheck` | Tapioca generates the gem and DSL RBIs, then `srb tc` must report no errors; `app/` and `script/` are `typed: strict` |
-| `rake yard` | YARD must report 100% documented (application and scripts) |
-| `rake reek flay` | no code smell (default Reek configuration) and no structural duplication |
-| `rake brakeman` | Brakeman, every check, no ignore file, zero warnings |
-| `rake audit` | bundler-audit: no gem with a known vulnerability |
+- Ruby (`rails_app/`, and the Ruby scripts of `script/`), through the tasks of `rails_app/Rakefile`:
+  - `spec`: RSpec; 100% line **and** branch coverage (SimpleCov), no pending or skipped example, no Ruby warning from
+    the application or the specs, Rails deprecations raise.
+  - `rubocop`: every cop of RuboCop and of its plugins (`rubocop-rails`, `rubocop-rspec`, `rubocop-rspec_rails`,
+    `rubocop-performance`, `rubocop-rake`, `rubocop-sorbet`, `rubocop-thread_safety`, `rubocop-yard`, `rubocop-md`,
+    `rubocop-ai`); `rails_app/.rubocop.yml` lists the few cops that cannot apply, with the reason; no todo file.
+  - `typecheck`: Tapioca generates the gem and DSL RBIs, then `srb tc` must report no errors. The application, the
+    scripts and most of the configuration are `typed: strong`, the specs and the Rails environment files
+    `typed: strict` (with Sorbet's RSpec support); only `config.ru` and `config/puma.rb`, which Rack and Puma
+    evaluate with `instance_eval`, are `typed: false`.
+  - `yard`: 100% documented, without a YARD warning (application and scripts).
+  - `reek`, `flay`, `flog`, `debride`: no code smell, no structural duplication, no method with a Flog score above 20,
+    no method without a caller.
+  - `brakeman`, `audit`: Brakeman (every check, no ignore file) and bundler-audit.
+  - `outdated`: every dependency at its newest release, except the documented holds of `script/outdated_holds.yml`:
+    the gems, Bundler and RubyGems, every pinned Ruby, the nginx release the image builds, the Docker images of the
+    Dockerfile and of `tools/images.json` (newest tag, and the digest the tag points to), every GitHub Action (newest
+    release, pinned to its commit), the Python tools and the release binaries of `tools/binaries.json`.
+  - `mutant`: mutation testing; every mutation must be killed (`rails_app/.mutant.yml`). Mutant parses the code with
+    the `parser` gem, which only has a grammar for Ruby 3.3: CI runs it on the newest Ruby 3.3.
+- The repository: `suppressions` (see below), `actionlint` (with ShellCheck on every `run:` block), `zizmor`
+  (pedantic persona; online audits when `GH_TOKEN` is set), `shellcheck` (every optional check, every severity),
+  `shfmt` (`.editorconfig`), `typos`, `rumdl` (every rule, `.rumdl.toml`), `yamllint` (every rule, strict,
+  `.yamllint.yml`) and `editorconfig` (editorconfig-checker).
+- Docker: `hadolint` (every severity, OCI labels, trusted registries; `.hadolint.yaml`), `buildkit` (BuildKit's build
+  checks), `trivy_config` (Trivy's misconfiguration rules), `gitleaks` (the whole history), `trivy_fs` (every lockfile
+  and the working tree) and `image`: the build, container-structure-test (`test/image/structure-tests.yaml`, which
+  runs `nginx -t` inside the image), the end-to-end smoke test (`test/image/smoke_test.sh`), Dockle (every level),
+  Trivy and Grype (any fixable vulnerability) and gixy on the rendered `nginx.conf`.
 
-Not part of the default task, but also enforced in CI:
+Ruby warnings are on (`RUBYOPT=-w -W:deprecated -W:performance`) for every command, except the third-party tools
+whose own sources print verbose-mode warnings that this repository cannot fix (RuboCop through kramdown, Tapioca,
+YARD, Brakeman, bundler-audit): those keep the deprecation and performance categories. `script/check` names them.
 
-```bash
-bundle exec rake mutant     # mutation testing; every mutation must be killed (.mutant.yml)
-bundle exec rake outdated   # every dependency at its newest release, except the documented holds
-```
-
-Mutant parses the code with the `parser` gem, which only has a grammar for Ruby 3.3: run it on the newest Ruby 3.3
-(CI does) to avoid the `parser/current` warning.
-
-`rake outdated` (`script/outdated.rb`) checks the gems, Bundler and RubyGems, every pinned Ruby, the nginx release the
-image builds, every Docker image (newest tag, and the digest the tag points to), every GitHub Action (newest release, pinned
-to its commit), and the Python tools. A dependency that cannot be updated is listed, with the reason, in
-`script/outdated_holds.yml`; the check also fails when a hold is no longer needed.
-
-### Docker image
-
-```bash
-docker run --rm -i hadolint/hadolint:v2.15.1 hadolint - < Dockerfile
-docker buildx build --check .
-docker build --tag minimal-docker-nginx:ci .
-docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD/test/image:/tests:ro" \
-  ghcr.io/googlecontainertools/container-structure-test:1.22.1 \
-  test --image minimal-docker-nginx:ci --config /tests/structure-tests.yaml
-test/image/smoke_test.sh minimal-docker-nginx:ci
-```
-
-CI also runs Dockle (every level), Trivy and Grype on the built image (both fail on any vulnerability that has a fix),
-and gixy on the rendered `nginx.conf`; the exact commands and pinned images are in `.github/workflows/docker.yml`. The
-structure tests run `nginx -t` inside the image.
-
-### Repository
-
-```bash
-actionlint
-zizmor --persona pedantic .github/workflows
-shellcheck script/*.sh test/image/*.sh docker_config/entrypoint.sh .githooks/pre-commit
-typos
-rumdl check --deny-config-warnings .
-script/forbidden_suppressions.sh
-```
+In CI, every job also runs behind `step-security/harden-runner` with an egress allow-list (`egress-policy: block`, no
+`sudo`), the dependency review fails on vulnerabilities of any severity, and CodeQL scans the Ruby code and the
+workflows with the security-extended and security-and-quality suites.
 
 ## Rules
 
 - **No inline suppressions.** Nothing may silence a linter, scanner, type checker, warning or test in place: no
   `rubocop:disable`, `:nocov:`, `:reek:`, `mutant:disable`, `hadolint ignore`, `shellcheck disable`,
-  `rumdl-disable`/`markdownlint-disable`, `gitleaks:allow`, `nosec`, `T.unsafe`/`T.cast`/`T.bind`/`T.untyped` in `app/`,
-  `$VERBOSE = nil`, `skip`/`pending`/`focus`, and so on, and no suppression or todo file (`.rubocop_todo.yml`,
+  `rumdl-disable`/`markdownlint-disable`, `yamllint disable`, `editorconfig-checker-disable`, `gitleaks:allow`, `nosec`,
+  `T.unsafe`/`T.cast`/`T.bind`/`T.untyped` in any Ruby file, `$VERBOSE = nil`, `skip`/`pending`/`focus`, and so on, and
+  no suppression or todo file (`.rubocop_todo.yml`,
   `.trivyignore`, `.grype.yaml`, `.dockleignore`, `brakeman.ignore`, `sorbet/rbi/todo.rbi`, ...). Fix the cause. A rule
   that cannot apply is configured narrowly in the tool's configuration file, with the reason written next to it
-  (`.hadolint.yaml`, `rails_app/.rubocop.yml`, `_typos.toml`, ...).
+  (`.hadolint.yaml`, `rails_app/.rubocop.yml`, `.rumdl.toml`, `.yamllint.yml`, `.editorconfig-checker.json`,
+  `_typos.toml`).
 - **No warnings.** Every workflow ends with a "Warning gate" job (`script/warning_gate.sh`) that fails the run when the
   log of any job contains a warning or a deprecation notice. The output of compiling Ruby, nginx and Passenger inside
   the image build (third-party C code) is kept in the `build.log` of the `image-reports` artifact rather than in the
@@ -102,4 +89,4 @@ script/forbidden_suppressions.sh
   low-scoring dependency first (Markdown is linted with rumdl, a single binary, instead of markdownlint-cli2 and its
   low-scoring npm dependencies; the Rails app depends on the frameworks it loads, not on the `rails` meta-gem).
 - **Everything is pinned and current.** Docker images are pinned by digest, GitHub Actions by commit, Python tools by
-  hash; `rake outdated` keeps them at their newest releases.
+  hash, release binaries by SHA-256; `rake outdated` keeps them at their newest releases.

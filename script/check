@@ -1,0 +1,203 @@
+#!/usr/bin/env bash
+# Runs the checks of this repository. Every CI job runs its checks through this script (each step names them), so
+# a local `script/check` runs exactly what CI runs.
+#
+# Usage: script/check [check...]   (no argument: every check, in the order below)
+#
+# The Ruby checks need the bundle of rails_app/ (`bundle install`). The linters come from tools/requirements.txt
+# (`pip install --require-hashes -r tools/requirements.txt`) and tools/binaries.json (script/install_binaries.sh on
+# Linux x86-64; elsewhere the same release of each tool); the Docker checks run the images of tools/images.json.
+# zizmor runs its online audits when GH_TOKEN is set. CI runs `mutant` on the Ruby line of
+# .github/workflows/mutation.yml (see script/outdated_holds.yml); locally it runs on the Ruby in the PATH.
+set -euo pipefail
+
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${root}"
+
+ruby_checks=(spec rubocop typecheck yard reek flay flog debride brakeman audit outdated mutant)
+lint_checks=(suppressions actionlint zizmor shellcheck shfmt typos rumdl yamllint editorconfig)
+docker_checks=(hadolint buildkit trivy_config gitleaks trivy_fs image)
+all_checks=("${ruby_checks[@]}" "${lint_checks[@]}" "${docker_checks[@]}")
+
+# The shell scripts of the repository (ShellCheck and shfmt).
+shell_files=(script/*.sh script/check test/image/*.sh docker_config/entrypoint.sh .githooks/pre-commit)
+# ShellCheck at its strictest: every optional check, every severity.
+shellcheck_options=(--enable=all --severity=style)
+
+# Ruby warnings: every command runs with -w, so a warning from the code of this repository fails the suite and any
+# other warning fails the warning gate of CI. The exceptions are the third-party tools whose own sources print
+# verbose-mode warnings that this repository cannot fix: RuboCop (through kramdown, which rubocop-md loads), Tapioca
+# (`typecheck`), YARD, Brakeman and bundler-audit (`audit`). They keep the deprecation and performance categories.
+all_warnings='-w -W:deprecated -W:performance'
+tool_warnings='-W:deprecated -W:performance'
+
+rake() {
+  local warnings=$1
+  shift
+  (cd rails_app && RUBYOPT="${warnings}" bundle exec rake "$@")
+}
+
+# The reference name:tag@digest of an image of tools/images.json.
+image() {
+  jq --exit-status --raw-output --arg key "$1" '.[$key] | "\(.name):\(.tag)@\(.digest)"' tools/images.json
+}
+
+check_spec() { rake "${all_warnings}" spec; }
+check_rubocop() { rake "${tool_warnings}" rubocop; }
+check_typecheck() { rake "${tool_warnings}" typecheck; }
+check_yard() { rake "${tool_warnings}" yard; }
+check_reek() { rake "${all_warnings}" reek; }
+check_flay() { rake "${all_warnings}" flay; }
+check_flog() { rake "${all_warnings}" flog; }
+check_debride() { rake "${all_warnings}" debride; }
+check_brakeman() { rake "${tool_warnings}" brakeman; }
+check_audit() { rake "${tool_warnings}" audit; }
+check_outdated() { rake "${all_warnings}" outdated; }
+check_mutant() { rake "${all_warnings}" mutant; }
+
+check_suppressions() { script/forbidden_suppressions.sh; }
+# actionlint runs ShellCheck (with the options above) on every `run:` block of the workflows.
+check_actionlint() { SHELLCHECK_OPTS="${shellcheck_options[*]}" actionlint -color; }
+check_zizmor() { zizmor --persona=pedantic --format=plain .; }
+check_shellcheck() { shellcheck "${shellcheck_options[@]}" "${shell_files[@]}"; }
+# shfmt reads its options from .editorconfig.
+check_shfmt() { shfmt --diff "${shell_files[@]}"; }
+check_typos() { typos; }
+check_rumdl() { rumdl check --deny-config-warnings .; }
+check_yamllint() { yamllint --strict .; }
+check_editorconfig() { editorconfig-checker; }
+
+# hadolint fails on every finding, style included (.hadolint.yaml).
+check_hadolint() {
+  local hadolint_image
+  hadolint_image=$(image hadolint)
+  docker run --rm --volume "${root}:/repository:ro" --workdir /repository "${hadolint_image}" hadolint Dockerfile
+}
+check_buildkit() { docker buildx build --check .; }
+check_trivy_config() {
+  local trivy_image
+  trivy_image=$(image trivy)
+  docker run --rm --volume "${root}:/repository:ro" "${trivy_image}" \
+    config --exit-code 1 --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL /repository
+}
+
+# Secrets in the whole history.
+check_gitleaks() {
+  local gitleaks_image
+  gitleaks_image=$(image gitleaks)
+  docker run --rm --volume "${root}:/repository:ro" "${gitleaks_image}" \
+    git --redact --verbose --exit-code 1 /repository
+}
+
+# Vulnerabilities in every lockfile (Gemfile.lock, tools/requirements.txt; development dependencies included) and
+# secrets in the working tree. Trivy reads the licenses of the Python packages from the installed environment (it
+# warns without one), so it runs where the tools are installed: from the PATH when it is there (CI copies it out of
+# its pinned image), else from the image.
+check_trivy_fs() {
+  local options=(filesystem --scanners 'vuln,secret' --include-dev-deps --exit-code 1 --no-progress)
+  if command -v trivy >/dev/null; then
+    trivy "${options[@]}" .
+  else
+    local trivy_image
+    trivy_image=$(image trivy)
+    docker run --rm --volume "${root}:/repository:ro" "${trivy_image}" "${options[@]}" /repository
+  fi
+}
+
+# Builds the image and tests and scans it. IMAGE names it (default minimal-docker-nginx:check); REPORTS_DIR receives
+# the build log, the vulnerability reports and the list of its files (default: a temporary directory);
+# BUILD_CACHE_FROM and BUILD_CACHE_TO are passed to `docker buildx build --cache-from/--cache-to` when set.
+check_image() {
+  local name=${IMAGE:-minimal-docker-nginx:check}
+  local reports=${REPORTS_DIR:-}
+  if [[ -z ${reports} ]]; then
+    reports=$(mktemp -d)
+  fi
+  mkdir -p "${reports}"
+  build_image "${name}" "${reports}"
+  test_image "${name}"
+  scan_image "${name}" "${reports}"
+}
+
+# The compiler output of Ruby, nginx and Passenger (third-party C code, with its own diagnostics) goes to the build
+# log instead of the output; the Dockerfile itself is held to zero findings by hadolint and the BuildKit checks. The
+# end of the log is printed when the build fails.
+build_image() {
+  local name=$1 reports=$2 cache=() status=0
+  if [[ -n ${BUILD_CACHE_FROM:-} ]]; then
+    cache+=(--cache-from "${BUILD_CACHE_FROM}")
+  fi
+  if [[ -n ${BUILD_CACHE_TO:-} ]]; then
+    cache+=(--cache-to "${BUILD_CACHE_TO}")
+  fi
+  docker buildx build --load --tag "${name}" --progress plain ${cache[@]+"${cache[@]}"} . >"${reports}/build.log" 2>&1 \
+    || status=$?
+  if [[ ${status} -ne 0 ]]; then
+    tail -n 150 "${reports}/build.log"
+    return "${status}"
+  fi
+  docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}} {{.Size}}' "${name}"
+}
+
+# container-structure-test (test/image/structure-tests.yaml, which runs `nginx -t` inside the image) and the
+# end-to-end smoke test.
+test_image() {
+  local name=$1 structure_test_image
+  structure_test_image=$(image structure-test)
+  docker run --rm --volume /var/run/docker.sock:/var/run/docker.sock --volume "${root}/test/image:/tests:ro" \
+    "${structure_test_image}" test --image "${name}" --config /tests/structure-tests.yaml
+  test/image/smoke_test.sh "${name}"
+}
+
+# Dockle (the CIS Docker benchmark, every level; DOCKER_CONTENT_TRUST is what CIS-DI-0005 asks for when images are
+# pulled and pushed), Trivy and Grype (any fixable vulnerability, and secrets) on the saved image, and gixy on its
+# rendered nginx.conf.
+scan_image() {
+  local name=$1 reports=$2 scan container dockle_image trivy_image grype_image status=0
+  dockle_image=$(image dockle)
+  trivy_image=$(image trivy)
+  grype_image=$(image grype)
+  scan=$(mktemp -d)
+  docker save "${name}" --output "${scan}/image.tar"
+  container=$(docker create "${name}")
+  docker export "${container}" | tar -tv | sort -k 6 >"${reports}/container_filesystem.txt"
+  docker cp "${container}:/opt/nginx/conf" "${scan}/nginx-conf"
+  docker rm "${container}" >/dev/null
+  wc -l "${reports}/container_filesystem.txt"
+
+  docker run --rm --volume "${scan}:/scan:ro" --env DOCKER_CONTENT_TRUST=1 "${dockle_image}" \
+    --exit-code 1 --exit-level info --input /scan/image.tar
+
+  docker run --rm --volume "${scan}:/scan:ro" --volume "${reports}:/reports" "${trivy_image}" \
+    image --input /scan/image.tar --scanners vuln,secret --ignore-unfixed \
+    --severity UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL --exit-code 1 --no-progress --format table \
+    --output /reports/TRIVY_REPORT.txt || status=$?
+  cat "${reports}/TRIVY_REPORT.txt"
+  [[ ${status} -eq 0 ]] || return "${status}"
+
+  docker run --rm --volume "${scan}:/scan:ro" --volume "${reports}:/reports" \
+    --env GRYPE_CHECK_FOR_APP_UPDATE=false "${grype_image}" \
+    docker-archive:/scan/image.tar --only-fixed --fail-on negligible --quiet \
+    --output table --file /reports/GRYPE_REPORT.txt || status=$?
+  cat "${reports}/GRYPE_REPORT.txt"
+  [[ ${status} -eq 0 ]] || return "${status}"
+
+  # The include of mime.types names the path nginx uses; it is pointed at the copied configuration.
+  sed -i.orig "s|include /opt/nginx/conf/|include ${scan}/nginx-conf/|" "${scan}/nginx-conf/nginx.conf"
+  gixy "${scan}/nginx-conf/nginx.conf"
+  rm -rf "${scan}"
+}
+
+if [[ $# -eq 0 ]]; then
+  set -- "${all_checks[@]}"
+fi
+for name in "$@"; do
+  if [[ " ${all_checks[*]} " != *" ${name} "* ]]; then
+    echo "Unknown check '${name}'. Checks: ${all_checks[*]}" >&2
+    exit 2
+  fi
+done
+for name in "$@"; do
+  echo "==> ${name}"
+  "check_${name}"
+done

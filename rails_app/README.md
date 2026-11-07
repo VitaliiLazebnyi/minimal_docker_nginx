@@ -1,4 +1,4 @@
-# Rails application
+# Rails Application
 
 The API-only Rails application served by Passenger in the Docker image of this repository (see the
 [README](../README.md) of the repository).

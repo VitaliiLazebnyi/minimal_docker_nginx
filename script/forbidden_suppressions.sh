@@ -12,12 +12,18 @@ cd "$(dirname "${BASH_SOURCE[0]}")/.."
 files=$(git ls-files -z -- . ':(exclude)*.md' ':(exclude)script/forbidden_suppressions.sh' \
   ':(exclude)rails_app/sorbet/rbi/annotations' | tr '\0' '\n')
 
+# The extended regular expression that matches any of the arguments.
+any() {
+  local IFS='|'
+  printf '%s' "$*"
+}
+
 status=0
 check() {
   local description=$1 pattern=$2 scope=${3:-.}
   local hits
   hits=$(printf '%s\n' "${files}" | grep -E "^${scope}" | xargs -r grep -nEH -e "${pattern}" -- || true)
-  if [[ -n "${hits}" ]]; then
+  if [[ -n ${hits} ]]; then
     printf 'Forbidden (%s):\n%s\n\n' "${description}" "${hits}"
     status=1
   fi
@@ -37,16 +43,26 @@ check 'typos suppression' 'typos: ?(ignore|off)|spellchecker: ?disable'
 check 'Brakeman ignore' 'brakeman:? ?ignore'
 check 'LGTM/CodeQL suppression' 'lgtm\[|codeql\[|codeql-disable|lgtm: ?ignore'
 check 'nosec' 'nosec|NOLINT'
-check 'warning silencing' '[$]VERBOSE *= *(nil|false)|Warning\.ignore|silence_warnings|[$]stderr *= *File::NULL|Warning\[:[a-z]+\] *= *false|-W0|--no-warnings'
-check 'deprecation silencing' 'ActiveSupport::Deprecation\.(silence|behavior *= *:silence)|deprecation *= *:(silence|log|notify)|report_deprecations *= *false' 'rails_app/(app|lib|spec|config/environments/test\.rb)'
-check 'skipped or focused test' '^[[:space:]]*(xit|xspecify|xexample|xdescribe|xcontext|fit|fspecify|fexample|fdescribe|fcontext|skip|pending)([[:space:]]|\()|focus: *true|, *:focus|, *(skip|pending): ' 'rails_app/spec/'
-check 'Sorbet escape hatch' 'T\.(unsafe|cast|bind|untyped)\b|typed: *(false|ignore|true)\b' 'rails_app/(app|lib)/'
+check 'yamllint directive' 'yamllint (disable|enable)'
+check 'editorconfig-checker directive' 'editorconfig-checker-(disable|enable)'
+warnings=$(any '[$]VERBOSE *= *(nil|false)' 'Warning\.ignore' 'silence_warnings' '[$]stderr *= *File::NULL' \
+  'Warning\[:[a-z]+\] *= *false' '-W0' '--no-warnings')
+check 'warning silencing' "${warnings}"
+deprecations=$(any 'ActiveSupport::Deprecation\.(silence|behavior *= *:silence)' \
+  'deprecation *= *:(silence|log|notify)' 'report_deprecations *= *false')
+check 'deprecation silencing' "${deprecations}" 'rails_app/(app|lib|spec|config/environments/test\.rb)'
+skipping=$(any xit xspecify xexample xdescribe xcontext fit fspecify fexample fdescribe fcontext skip pending)
+focus=$(any "^[[:space:]]*(${skipping})([[:space:]]|\()" 'focus: *true' ', *:focus' ', *(skip|pending): ')
+check 'skipped or focused test' "${focus}" 'rails_app/spec/'
+ruby_files='((rails_app|script)/.*\.(rb|rbi|ru)|rails_app/(Rakefile|bin/.*))$'
+check 'Sorbet escape hatch' 'T\.(unsafe|cast|bind|untyped)\b' "${ruby_files}"
+check 'weak Sorbet sigil' 'typed: *(false|ignore|true)\b' 'rails_app/(app|lib)/'
 
 # Suppression and todo files of the tools: findings are fixed, never parked in a file.
 for forbidden in .rubocop_todo.yml rails_app/.rubocop_todo.yml rails_app/sorbet/rbi/todo.rbi \
   .trivyignore .trivyignore.yaml .grype.yaml .dockleignore rails_app/config/brakeman.ignore \
-  .gitleaksignore .markdownlintignore .rumdlignore .typos-ignore; do
-  if [[ -e "${forbidden}" ]]; then
+  .gitleaksignore .markdownlintignore .rumdlignore .typos-ignore .yamllint-ignore .ecrc; do
+  if [[ -e ${forbidden} ]]; then
     printf 'Forbidden (suppression or todo file): %s\n\n' "${forbidden}"
     status=1
   fi

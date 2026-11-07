@@ -1,5 +1,7 @@
-# typed: false
+# typed: strong
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 Rails.application.routes.draw do
   get 'health', to: 'health#show'

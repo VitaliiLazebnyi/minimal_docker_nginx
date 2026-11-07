@@ -1,0 +1,9 @@
+{
+  "$comment": [
+    "editorconfig-checker checks every file against .editorconfig, except the RBI annotations that",
+    "`tapioca annotations` copies verbatim from Shopify's rbi-central repository (third-party type information)."
+  ],
+  "Exclude": [
+    "^rails_app/sorbet/rbi/annotations/"
+  ]
+}

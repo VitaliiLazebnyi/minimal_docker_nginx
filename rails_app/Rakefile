@@ -1,91 +1,146 @@
-# typed: false
+# typed: strict
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 require_relative 'config/application'
 require 'active_support/core_ext/string/exclude'
+require 'tempfile'
 
 Rails.application.load_tasks
 
-# The repository root: the shell gates and the outdated check cover the whole repository, not only the app.
-REPOSITORY_ROOT = File.expand_path('..', __dir__)
+# The quality gates of the application. Each task shells out to its tool, which loads what it needs itself;
+# only `debride` boots the application (it reads the routes). Rails defines `spec` (rspec-rails), the suite
+# that SimpleCov fails below 100% line and branch coverage and spec/spec_helper.rb fails on any warning,
+# pending or skipped example.
+module QualityGates
+  extend Rake::DSL
+  extend T::Sig
 
-# Flay mass threshold. At the default (16) Flay only reports identical Sorbet `sig` declarations of sibling
-# methods; from 24 up it reports every duplicated piece of logic.
-FLAY_MASS = 24
+  # The repository root: the shell gates and the outdated check cover the whole repository, not only the app.
+  REPOSITORY_ROOT = T.let(File.expand_path('..', __dir__), String)
+  # Ruby code outside the application: the repository scripts (the outdated and Scorecard checks), linted,
+  # typed, documented and smell-checked with the application's configuration.
+  SCRIPTS = T.let(File.join(REPOSITORY_ROOT, 'script'), String)
+  # The Ruby code every analysis covers.
+  SOURCES = T.let(['app', 'lib', SCRIPTS].freeze, T::Array[String])
+  # Flay mass threshold. At the default (16) Flay only reports identical Sorbet `sig` declarations of sibling
+  # methods; from 24 up it reports every duplicated piece of logic.
+  FLAY_MASS = 24
+  # Flog score above which a single method counts as too complex and must be split up (Flog's own guidance:
+  # 0-10 is good, 11-20 needs a look, above 20 needs refactoring).
+  FLOG_METHOD_THRESHOLD = 20
+  # Output of `yard stats` when every public API object is documented.
+  FULLY_DOCUMENTED = '100.00% documented'
+  public_constant :REPOSITORY_ROOT, :SCRIPTS, :SOURCES, :FLAY_MASS, :FLOG_METHOD_THRESHOLD, :FULLY_DOCUMENTED
 
-# Output of `yard stats` when every public API object is documented.
-FULLY_DOCUMENTED = '100.00% documented'
+  # Runs +command+, prints its output, and returns that output; aborts with +failure+ when it exits non-zero.
+  # @param command [Array<String>]
+  # @param failure [String]
+  # @param directory [String] the working directory of the command
+  # @return [String]
+  sig { params(command: T::Array[String], failure: String, directory: String).returns(String) }
+  def self.capture(command, failure, directory: Dir.pwd)
+    output = IO.popen(command, chdir: directory, err: %i[child out], &:read)
+    puts(output)
+    abort(failure) unless Process.last_status&.success?
+    output
+  end
 
-# Rails defines `spec` (rspec-rails) as the task that runs the suite; SimpleCov fails it below 100% line
-# and branch coverage, and spec/spec_helper.rb fails it on any warning, pending or skipped example.
-
-# Ruby code outside the application: the repository scripts (the outdated check), linted, documented and
-# smell-checked with the application's configuration.
-SCRIPTS = File.join(REPOSITORY_ROOT, 'script')
-
-desc 'Run RuboCop (the application and the repository scripts)'
-task :rubocop do
-  sh 'bundle exec rubocop'
-  sh "bundle exec rubocop --config .rubocop.yml #{SCRIPTS}"
-end
-
-desc 'Fail on inline suppressions of any linter, scanner, type checker, warning or test'
-task :suppressions do
-  sh File.join(REPOSITORY_ROOT, 'script', 'forbidden_suppressions.sh')
-end
-
-desc 'Generate the gem and DSL RBIs with Tapioca, then run the Sorbet type checker'
-task :typecheck do
-  sh 'bundle exec tapioca gem'
-  sh 'bundle exec tapioca dsl'
-  sh 'bundle exec srb tc'
-end
-
-desc 'Fail unless every public API object (of the application and of the scripts) is documented'
-task :yard do
-  # The application reads .yardopts; YARD cannot be pointed at files outside its working directory, so the
-  # scripts are documented from their own directory with the same options.
-  script_files = %w[--plugin sorbet --no-private --markup markdown outdated.rb outdated/**/*.rb scorecards.rb]
-  { Dir.pwd => [], SCRIPTS => script_files }
-    .each do |directory, files|
-      output = IO.popen(['bundle', 'exec', 'yard', 'stats', '--list-undoc', '--no-save', *files],
-                        chdir: directory, err: %i[child out], &:read)
-      puts output
-      abort "YARD: undocumented API objects found in #{directory}" if output.exclude?(FULLY_DOCUMENTED)
+  # The scores of every method of +sources+ that Flog rates above FLOG_METHOD_THRESHOLD.
+  # @param report [String] the output of `flog --all --methods-only`
+  # @return [Array<String>] "score: method" of each method that is too complex
+  sig { params(report: String).returns(T::Array[String]) }
+  def self.complex_methods(report)
+    report.scan(/^\s*(\d+\.\d+): (\S+)\s+\S+:\d+/).filter_map do |score, name|
+      "#{score}: #{name}" if Float(score.to_s) > FLOG_METHOD_THRESHOLD
     end
-end
+  end
 
-desc 'Fail on any code smell (default Reek configuration, no exclusions)'
-task :reek do
-  sh "bundle exec reek app lib #{SCRIPTS}"
-end
+  desc 'Run RuboCop (the application and the repository scripts)'
+  task :rubocop do
+    sh 'bundle exec rubocop'
+    sh "bundle exec rubocop --config .rubocop.yml #{SCRIPTS}"
+  end
 
-desc 'Fail on any structural duplication'
-task :flay do
-  output = IO.popen(['bundle', 'exec', 'flay', '--mass', FLAY_MASS.to_s, 'app', 'lib', SCRIPTS], &:read)
-  puts output
-  abort 'Flay: duplicated code found' unless output.start_with?('Total score (lower is better) = 0')
-end
+  desc 'Fail on inline suppressions of any linter, scanner, type checker, warning or test'
+  task :suppressions do
+    sh File.join(REPOSITORY_ROOT, 'script', 'forbidden_suppressions.sh')
+  end
 
-desc 'Fail on any Brakeman warning (security static analysis)'
-task :brakeman do
-  sh 'bundle exec brakeman --quiet --no-pager --no-summary --ensure-latest --ensure-ignore-notes --run-all-checks'
-end
+  desc 'Generate the gem and DSL RBIs with Tapioca, then run the Sorbet type checker'
+  task :typecheck do
+    sh 'bundle exec tapioca gem'
+    sh 'bundle exec tapioca dsl'
+    sh 'bundle exec srb tc'
+  end
 
-desc 'Audit gem dependencies for known vulnerabilities'
-task :audit do
-  sh 'bundle exec bundler-audit check --update'
-end
+  desc 'Fail unless every public API object (of the application and of the scripts) is documented, without warnings'
+  task :yard do
+    # The application reads .yardopts; YARD cannot be pointed at files outside its working directory, so the
+    # scripts are documented from their own directory with the same options.
+    script_files = %w[--plugin sorbet --no-private --markup markdown outdated.rb outdated/**/*.rb scorecards.rb]
+    { Dir.pwd => [], SCRIPTS => script_files }.each do |directory, files|
+      output = capture(
+        ['bundle', 'exec', 'yard', 'stats', '--list-undoc', '--no-save', *files],
+        "YARD failed in #{directory}",
+        directory:
+      )
+      abort "YARD: undocumented API objects found in #{directory}" if output.exclude?(FULLY_DOCUMENTED)
+      abort "YARD: warnings in #{directory}" if output.include?('[warn]')
+    end
+  end
 
-desc 'Fail on outdated dependencies that are not on the documented hold list (script/outdated_holds.yml)'
-task :outdated do
-  ruby File.join(REPOSITORY_ROOT, 'script', 'outdated.rb')
-end
+  desc 'Fail on any code smell (default Reek configuration, no exclusions)'
+  task :reek do
+    capture(['bundle', 'exec', 'reek', *SOURCES], 'Reek: code smells found')
+  end
 
-desc 'Run mutation testing (see .mutant.yml); every mutation must be killed'
-task :mutant do
-  sh 'bundle exec mutant run'
-end
+  desc 'Fail on any structural duplication'
+  task :flay do
+    output = capture(['bundle', 'exec', 'flay', '--mass', FLAY_MASS.to_s, *SOURCES], 'Flay failed')
+    abort 'Flay: duplicated code found' unless output.start_with?('Total score (lower is better) = 0')
+  end
 
-Rake::Task[:default].clear if Rake::Task.task_defined?(:default)
-task default: %i[spec rubocop suppressions typecheck yard reek flay brakeman audit]
+  desc "Fail on any method with a Flog score above #{FLOG_METHOD_THRESHOLD}"
+  task :flog do
+    complex = complex_methods(capture(['bundle', 'exec', 'flog', '--all', '--methods-only', *SOURCES], 'Flog failed'))
+    abort "Flog: methods scoring above #{FLOG_METHOD_THRESHOLD}:\n#{complex.join("\n")}" unless complex.empty?
+  end
+
+  desc 'Fail on any method nothing calls (debride); the actions the routes dispatch to count as called'
+  task debride: :environment do
+    Tempfile.create('routed-actions') do |routed|
+      routed.write(
+        Rails.application.routes.routes.filter_map { |route| route.defaults[:action] }
+        .join("\n")
+      )
+      routed.flush
+      output = capture(['bundle', 'exec', 'debride', '--rails', '--whitelist', routed.path, *SOURCES], 'debride failed')
+      abort 'debride: methods without a caller found' if output.exclude?('Total suspect LOC: 0')
+    end
+  end
+
+  desc 'Fail on any Brakeman warning (security static analysis)'
+  task :brakeman do
+    sh 'bundle exec brakeman --quiet --no-pager --no-summary --ensure-latest --ensure-ignore-notes --run-all-checks'
+  end
+
+  desc 'Audit gem dependencies for known vulnerabilities'
+  task :audit do
+    sh 'bundle exec bundler-audit check --update'
+  end
+
+  desc 'Fail on outdated dependencies that are not on the documented hold list (script/outdated_holds.yml)'
+  task :outdated do
+    ruby File.join(REPOSITORY_ROOT, 'script', 'outdated.rb')
+  end
+
+  desc 'Run mutation testing (see .mutant.yml); every mutation must be killed'
+  task :mutant do
+    sh 'bundle exec mutant run'
+  end
+
+  Rake::Task[:default].clear if Rake::Task.task_defined?(:default)
+  task default: %i[spec rubocop suppressions typecheck yard reek flay flog debride brakeman audit]
+end

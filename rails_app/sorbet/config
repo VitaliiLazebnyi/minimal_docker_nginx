@@ -5,3 +5,9 @@
 --ignore=tmp/
 --ignore=vendor/
 --parser=prism
+--file=Rakefile
+--file=bin/ci
+--file=bin/rails
+--file=bin/rake
+--file=bin/setup
+--enable-experimental-rspec

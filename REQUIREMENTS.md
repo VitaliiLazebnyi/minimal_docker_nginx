@@ -1,5 +1,7 @@
 # System Requirements (Single Source of Truth)
 
+The requirements every change to this repository is held to; [BUGS.md](BUGS.md) tracks the defects against them.
+
 ## Meta Constraints
 
 - **REQ-DOC-001**: Automatically scaffold a `REQUIREMENTS.md` file at the root of formal projects.
@@ -16,7 +18,7 @@
 - **REQ-WEB-001**: Use Nginx as a web server with Passenger.
 - **REQ-WEB-002**: Use the latest available versions of Nginx, RoR, and Passenger on their official websites.
 
-## Application Compilation (C/C++)
+## Application Compilation (C and C++)
 
 - **REQ-COMP-001**: Enforce absolute maximum native CPU throughput by explicitly binding `CFLAGS` and `CXXFLAGS` to
   `-Ofast`, `-march=native`, and `-flto` (Link Time Optimization) across all standard dependencies.

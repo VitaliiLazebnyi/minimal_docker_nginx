@@ -1,5 +1,7 @@
-# typed: strict
+# typed: strong
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 require 'sorbet-runtime'
 
@@ -33,14 +35,14 @@ module Outdated
     # @param message [String]
     sig { params(message: String).void }
     def info(message)
-      puts message
+      puts(message)
     end
 
     # Prints a message that fails the check.
     # @param message [String]
     sig { params(message: String).void }
     def problem(message)
-      warn "#{@prefix}: #{message}"
+      warn("#{@prefix}: #{message}")
       @problems += 1
     end
 
@@ -78,6 +80,7 @@ module Outdated
   # @return [String]
   sig { params(versions: T::Array[String]).returns(String) }
   def self.newest(versions)
-    versions.max_by { |version| Gem::Version.new(version) }.to_s
+    versions.max_by { |version| Gem::Version.new(version) }
+            .to_s
   end
 end

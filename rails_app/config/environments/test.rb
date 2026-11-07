@@ -1,5 +1,7 @@
-# typed: false
+# typed: strict
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 # The test environment is used exclusively to run your application's
 # test suite. You never need to work with it otherwise. Remember that
@@ -17,7 +19,7 @@ Rails.application.configure do
   config.eager_load = true
 
   # Configure public file server for tests with cache-control for performance.
-  config.public_file_server.headers = { 'cache-control' => 'public, max-age=3600' }
+  config.public_file_server.headers = { Rack::CACHE_CONTROL => 'public, max-age=3600' }
 
   # Show full error reports.
   config.consider_all_requests_local = true

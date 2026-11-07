@@ -1,9 +1,12 @@
-# typed: strict
+# typed: strong
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 require 'open3'
 require 'sorbet-runtime'
 require_relative 'document'
+require_relative 'error'
 require_relative 'http'
 require_relative 'report'
 
@@ -16,16 +19,21 @@ module Outdated
     private_constant :OUTDATED_LINE
 
     # [name, newest, installed] of every gem `bundle outdated` reports; raises when it cannot check.
-    # @return [Array<(String, String, String)>]
+    # @return [Array<Array(String, String, String)>]
     sig { returns(T::Array[[String, String, String]]) }
     def self.outdated_gems
       # `bundle outdated` refuses to run in deployment mode (which CI's setup-ruby configures); it only reads the
       # lockfile and the gem index, so it runs with deployment and frozen mode off.
-      output, status = Open3.capture2e({ 'BUNDLE_DEPLOYMENT' => 'false', 'BUNDLE_FROZEN' => 'false' },
-                                       'bundle', 'outdated', '--parseable', chdir: APP)
+      output, status = Open3.capture2e(
+        { 'BUNDLE_DEPLOYMENT' => 'false', 'BUNDLE_FROZEN' => 'false' },
+        'bundle',
+        'outdated',
+        '--parseable',
+        chdir: APP
+      )
       # Exit status 1 only means that some gem is outdated; a killed process has no exit status.
       code = status.exitstatus || 2
-      raise "bundle outdated failed (#{code}):\n#{output}" if code > 1
+      raise(Error, "bundle outdated failed (#{code}):\n#{output}") if code > 1
 
       output.scan(OUTDATED_LINE).map { |name, newest, installed| [name.to_s, newest.to_s, installed.to_s] }
     end
@@ -76,8 +84,10 @@ module Outdated
 
     sig { void }
     def check_rubygems
-      newest = Document.string(Http.json('https://rubygems.org/api/v1/versions/rubygems-update/latest.json'),
-                               ['version'])
+      newest = Document.string(
+        Http.json('https://rubygems.org/api/v1/versions/rubygems-update/latest.json'),
+        ['version']
+      )
       built = File.read(File.join(ROOT, 'Dockerfile'))[/^ARG RUBYGEMS_VERSION=(\S+)/, 1].to_s
       @report.compare('RubyGems (Dockerfile ARG RUBYGEMS_VERSION)', built, newest)
     end

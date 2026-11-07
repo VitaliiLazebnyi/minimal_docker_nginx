@@ -1,8 +1,12 @@
-# typed: strict
+# typed: strong
 # frozen_string_literal: true
+
+# Copyright (c) 2026 Vitalii Lazebnyi
 
 require 'open3'
 require 'sorbet-runtime'
+
+require_relative 'error'
 
 module Outdated
   # The tags of a remote git repository.
@@ -15,7 +19,7 @@ module Outdated
     sig { params(url: String).returns(T::Hash[String, String]) }
     def self.of(url)
       output, status = Open3.capture2('git', 'ls-remote', '--tags', url)
-      raise "git ls-remote #{url} failed" unless status.success?
+      raise(Error, "git ls-remote #{url} failed") unless status.success?
 
       peel(output.lines.map(&:split))
     end
