@@ -6,6 +6,6 @@
 rubygems/ruby-progressbar:
   score: 2.8
   reason: >-
-    A runtime dependency of rubocop 1.92.1 (ruby-progressbar ~> 1.7), the linter every gate of this repository
+    A runtime dependency of rubocop 1.92.2 (ruby-progressbar ~> 1.7), the linter every gate of this repository
     runs; RuboCop has no variant without it. Development and CI only: it is not installed in the image
     (BUNDLE_WITHOUT=development:test).

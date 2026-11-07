@@ -1,19 +1,18 @@
 # Dependencies that are deliberately NOT at their newest release, each with the reason.
 # `rake outdated` (script/outdated.rb) fails for any other outdated dependency (gems, Ruby, nginx, Bundler,
 # RubyGems, Docker images, GitHub Actions, Python tools), and for a hold that is no longer needed.
-# Every gem entry quotes the exact blocking constraint (checked against rubygems.org on 2026-10-28).
+# Every gem entry quotes the exact blocking constraint (checked against rubygems.org on 2026-11-07).
 gems:
   diff-lcs:
     newest: 2.0.0
     blocked_by:
-      - 'rspec-expectations 3.13.5: diff-lcs >= 1.2.0, < 2.0'
-      - 'rspec-mocks 3.13.8: diff-lcs >= 1.2.0, < 2.0'
+      - 'rspec-expectations 3.13.6: diff-lcs >= 1.2.0, < 2.0'
+      - 'rspec-mocks 3.13.9: diff-lcs >= 1.2.0, < 2.0'
   prism:
     newest: 2.1.0
     blocked_by:
       - 'rubocop-ast 1.50.0: prism ~> 1.7'
       - 'flay 2.14.4: prism ~> 1.7'
-      - 'minitest 6.0.6: prism ~> 1.5'
       - 'rbi 0.5.0: prism ~> 1.0'
 
 # Ruby release lines used besides the newest Ruby; each must still be at its newest patch release.
