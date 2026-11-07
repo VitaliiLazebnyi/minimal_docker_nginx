@@ -1,4 +1,4 @@
-# Warnings that third-party gems print, which script/warnings.sh does not count. Nothing else is exempt: every other
+# Warnings that third-party tools print, which script/warnings.sh does not count. Nothing else is exempt: every other
 # warning or deprecation notice, from this repository or from any tool, fails script/check and the warning gate of
 # every workflow.
 #
@@ -26,3 +26,7 @@
 # releases that lack it; Thor 1.5.0 has it, so Ruby reports the redefinition.
 /gems/bundler-audit-0\.9\.3/[^ ]*/say_error\.rb:(16|28): warning: method redefined; discarding old say_error$
 /gems/thor-1\.5\.0/lib/thor/shell(/basic)?\.rb:(59|115): warning: previous definition of say_error was here$
+
+# step-security/harden-runner (CI): `disable-sudo-and-containers` removes the docker-ce package, and dpkg notes
+# in the agent's log that a directory of the package was left in place. Only this exact message is skipped.
+GMT:dpkg: warning: while removing docker-ce, directory '/usr/libexec/docker' not empty so not removed$
