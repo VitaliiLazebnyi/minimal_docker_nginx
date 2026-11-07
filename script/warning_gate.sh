@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Fails when the log of any other job of the current workflow run contains a warning or a deprecation notice.
-# Run by the "Warning gate" job of every workflow; the repository tolerates no warnings (see CONTRIBUTING.md).
+# Run by the "Warning gate (workflow)" job of every workflow: the repository tolerates no warnings (CONTRIBUTING.md).
 #
 # Needs GH_TOKEN (actions: read), GITHUB_REPOSITORY, GITHUB_RUN_ID and GATE_JOB_NAME (the name of the gate job
 # itself, whose own log quotes the pattern).

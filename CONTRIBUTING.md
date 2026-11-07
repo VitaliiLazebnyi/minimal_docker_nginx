@@ -76,10 +76,10 @@ workflows with the security-extended and security-and-quality suites.
   that cannot apply is configured narrowly in the tool's configuration file, with the reason written next to it
   (`.hadolint.yaml`, `rails_app/.rubocop.yml`, `.rumdl.toml`, `.yamllint.yml`, `.editorconfig-checker.json`,
   `_typos.toml`).
-- **No warnings.** Every workflow ends with a "Warning gate" job (`script/warning_gate.sh`) that fails the run when the
-  log of any job contains a warning or a deprecation notice. The output of compiling Ruby, nginx and Passenger inside
-  the image build (third-party C code) is kept in the `build.log` of the `image-reports` artifact rather than in the
-  job log; the Dockerfile itself is held to zero findings by hadolint and BuildKit's build checks.
+- **No warnings.** Every workflow ends with a "Warning gate (workflow)" job (`script/warning_gate.sh`) that fails the
+  run when the log of any job contains a warning or a deprecation notice. The output of compiling Ruby, nginx and
+  Passenger inside the image build (third-party C code) is kept in the `build.log` of the `image-reports` artifact
+  rather than in the job log; the Dockerfile itself is held to zero findings by hadolint and BuildKit's build checks.
 - **Behavior is specified.** Every behavioral fix needs a regression test (a spec, a structure test or a smoke-test
   step), and every surviving mutant needs a test that kills it (or, when the mutation cannot change observable
   behavior, simpler code).
