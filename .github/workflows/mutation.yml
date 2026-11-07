@@ -36,7 +36,7 @@ jobs:
     # (3.3.13.0) has no grammar for Ruby 3.4 or 4.0 and warns on any Ruby other than 3.3.13. Mutation
     # testing therefore runs on Ruby 3.3.13 (a hold documented in script/outdated_holds.yml); the
     # application itself is tested on the Ruby of .ruby-version by the CI workflow.
-    - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+    - uses: ruby/setup-ruby@b3aaceaef7e0ee231b499e7b5f49c03fc1d32199 # v1.338.0
       with:
         ruby-version: "3.3.13"
         rubygems: latest
