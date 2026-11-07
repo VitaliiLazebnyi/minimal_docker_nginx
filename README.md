@@ -8,8 +8,8 @@ optimization flags, then copies only what the running application needs into an 
 | Component | Version |
 | --- | --- |
 | Base image (builder) | `ruby:4.0.9-alpine3.24`, pinned by digest |
-| Ruby | 4.0.9 (recompiled from the verified source tarball of the base image), RubyGems 4.0.23 |
-| Rails | 8.1.4 |
+| Ruby | 4.0.9 (recompiled from the verified source tarball of the base image), RubyGems 4.0.24 |
+| Rails | 8.1.4.1 |
 | Passenger | 6.2.1 |
 | nginx | 1.31.8, the newest release (source tarball verified against its SHA-256) |
 

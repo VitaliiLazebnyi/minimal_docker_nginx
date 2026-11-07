@@ -116,7 +116,7 @@ commandTests:
   - name: the Rails application boots in production (eager loading every file)
     command: /usr/local/bin/ruby
     args: ["-e", "require './config/environment'; print Rails.application.config.eager_load, ' ', Rails.version"]
-    expectedOutput: ['^true 8\.1\.4$']
+    expectedOutput: ['^true 8\.1\.4\.1$']
     # Nothing on stderr either: no Bundler notice about an unwritable home directory, no warning.
     excludedError: ['.']
   # Regression: production had no database; the first query raised.

@@ -33,7 +33,7 @@ group :development, :test do
   gem 'mutant-rspec', '~> 0.17', require: false
   gem 'reek', '~> 6.6', require: false
   gem 'rubocop', '~> 1.92', require: false
-  gem 'rubocop-md', '~> 2.0', require: false
+  gem 'rubocop-md', '~> 3.0', require: false
   gem 'rubocop-performance', '~> 1.27', require: false
   gem 'rubocop-rails', '~> 2.38', require: false
   gem 'rubocop-rake', '~> 0.7', require: false
