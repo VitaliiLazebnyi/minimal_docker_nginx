@@ -13,7 +13,7 @@ run_id=${GITHUB_RUN_ID:?}
 gate_job_name=${GATE_JOB_NAME:?}
 token=${GH_TOKEN:?}
 
-pattern='warning:|WARNING|\bWARN\b|level=warn|\[warn\]|##\[warning\]|DEPRECATION|DEPRECATED|is deprecated|will be deprecated|deprecated and will|Node\.js [0-9]+ actions are deprecated'
+pattern='[Ww]arning:|WARNING|\bWARN\b|level=warn|\[warn\]|##\[warning\]|DEPRECATION|DEPRECATED|is deprecated|will be deprecated|deprecated and will|Node\.js [0-9]+ actions are deprecated'
 
 jobs=$(gh api --paginate "repos/${repository}/actions/runs/${run_id}/jobs?per_page=100" \
   --jq ".jobs[] | select(.name != \"${gate_job_name}\" and .conclusion != \"skipped\") | \"\(.id)\t\(.name)\"")
