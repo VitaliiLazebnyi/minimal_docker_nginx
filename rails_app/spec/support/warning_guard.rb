@@ -5,7 +5,7 @@
 
 require 'sorbet-runtime'
 
-# Turns every Ruby warning raised from this project's own code (app/, config/, lib/ and spec/)
+# Turns every Ruby warning raised from this project's own code (app/, config/, lib/, spec/ and ../script/)
 # into a test failure. Warnings that originate in third-party gems are left to Ruby's default
 # handling, and CI's warning gate fails the run on any of them that reaches a log.
 module WarningGuard
@@ -17,7 +17,12 @@ module WarningGuard
 
   PROJECT_ROOT = T.let(File.expand_path('../..', __dir__), String)
   OWN_DIRECTORIES = T.let(
-    %w[app config lib spec].map { |directory| File.join(PROJECT_ROOT, directory) }
+    [
+      *%w[app config lib spec].map do |directory|
+        File.join(PROJECT_ROOT, directory)
+      end,
+      File.expand_path('../script', PROJECT_ROOT)
+    ]
     .freeze,
     T::Array[String]
   )

@@ -21,8 +21,9 @@ Rails.application.configure do
   # Configure public file server for tests with cache-control for performance.
   config.public_file_server.headers = { Rack::CACHE_CONTROL => 'public, max-age=3600' }
 
-  # Show full error reports.
-  config.consider_all_requests_local = true
+  # No detailed error report in a response, in any environment (the log has the details): what the application
+  # answers on an error is the same everywhere.
+  config.consider_all_requests_local = false
   config.cache_store = :null_store
 
   # Render exception templates for rescuable exceptions and raise for other exceptions.

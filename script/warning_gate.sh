@@ -1,27 +1,17 @@
 #!/usr/bin/env bash
-# Fails when the log of any other job of the current workflow run contains a warning or a deprecation notice.
-# Run by the "Warning gate (workflow)" job of every workflow: the repository tolerates no warnings (CONTRIBUTING.md).
+# Fails when the log of any other job of the current workflow run contains a warning or a deprecation notice
+# (script/warnings.sh). Run by the "Warning gate (workflow)" job of every workflow: the repository tolerates no warnings
+# (CONTRIBUTING.md).
 #
-# Needs GH_TOKEN (actions: read), GITHUB_REPOSITORY, GITHUB_RUN_ID and GATE_JOB_NAME (the name of the gate job
-# itself, whose own log quotes the pattern).
+# Needs GH_TOKEN (actions: read), GITHUB_REPOSITORY, GITHUB_RUN_ID and GATE_JOB_NAME (the name of the gate job itself,
+# whose own log quotes the warnings it finds).
 set -euo pipefail
 
-# Ruby and compiler style "warning:", tool log levels (WARN, level=warn, [warn] of nginx), GitHub annotations
-# and deprecation notices of any tool.
+root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 repository=${GITHUB_REPOSITORY:?}
 run_id=${GITHUB_RUN_ID:?}
 gate_job_name=${GATE_JOB_NAME:?}
 token=${GH_TOKEN:?}
-
-patterns=(
-  '[Ww]arning:' 'WARNING' '\bWARN\b' 'level=warn' '\[warn\]' '##\[warning\]'
-  'DEPRECATION' 'DEPRECATED' 'is deprecated' 'will be deprecated' 'deprecated and will'
-  'Node\.js [0-9]+ actions are deprecated'
-)
-pattern=$(
-  IFS='|'
-  printf '%s' "${patterns[*]}"
-)
 
 jobs=$(gh api --paginate "repos/${repository}/actions/runs/${run_id}/jobs?per_page=100" \
   --jq ".jobs[] | select(.name != \"${gate_job_name}\" and .conclusion != \"skipped\") | \"\(.id)\t\(.name)\"")
@@ -34,12 +24,11 @@ while IFS=$'\t' read -r id name; do
   log=$(curl --fail --silent --show-error --location \
     --header "Authorization: Bearer ${token}" --header 'Accept: application/vnd.github+json' \
     "${GITHUB_API_URL:-https://api.github.com}/repos/${repository}/actions/jobs/${id}/logs")
-  hits=$(printf '%s\n' "${log}" | grep -nE -e "${pattern}" || true)
-  if [[ -n ${hits} ]]; then
+  if hits=$(printf '%s\n' "${log}" | "${root}/script/warnings.sh"); then
+    printf 'No warnings in the log of job "%s"\n' "${name}"
+  else
     printf '::error::Warnings in the log of job "%s"\n%s\n\n' "${name}" "${hits}"
     status=1
-  else
-    printf 'No warnings in the log of job "%s"\n' "${name}"
   fi
 done <<<"${jobs}"
 

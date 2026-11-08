@@ -1,4 +1,4 @@
-# EditorConfig: the whitespace rules of every file, checked by editorconfig-checker (script/lint.sh). shfmt
+# EditorConfig: the whitespace rules of every file, checked by editorconfig-checker (script/check). shfmt
 # formats the shell scripts with the same settings, and RuboCop, rumdl and yamllint enforce the same width.
 root = true
 
@@ -11,7 +11,7 @@ insert_final_newline = true
 max_line_length = 120
 trim_trailing_whitespace = true
 
-# shfmt (script/lint.sh) formats the shell scripts with these options (and the indentation above), and
+# shfmt (script/check) formats the shell scripts with these options (and the indentation above), and
 # simplifies them.
 [*.sh]
 binary_next_line = true

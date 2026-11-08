@@ -13,7 +13,10 @@ module Outdated
   class Registry
     extend T::Sig
 
+    # The registry of the image names without a host.
     DOCKER_HUB = 'registry-1.docker.io'
+    # The Accept header of a manifest request: every manifest and index type, so the digest is the one the tag
+    # points to.
     MANIFEST_TYPES = T.let(
       %w[
         application/vnd.oci.image.index.v1+json
@@ -30,9 +33,8 @@ module Outdated
     # @return [Registry]
     sig { params(name: String).returns(Registry) }
     def self.for(name)
-      first, *path = name.split('/')
-      host = first.to_s
-      return new(host, path.join('/')) if host.include?('.')
+      host, _, path = name.partition('/')
+      return new(host, path) if host.include?('.')
 
       new(DOCKER_HUB, path.empty? ? "library/#{name}" : name)
     end
@@ -53,7 +55,7 @@ module Outdated
     def initialize(host, repository)
       @host = host
       @repository = repository
-      @authorization = T.let(nil, T.nilable(T::Hash[Symbol, String]))
+      @token = T.let(token, String)
     end
 
     # Every tag of the repository, following the pagination of the registry.
@@ -62,12 +64,12 @@ module Outdated
     sig { params(url: String).returns(T::Array[String]) }
     def tags(url = "https://#{@host}/v2/#{@repository}/tags/list?n=1000")
       response = Http.get(url, authorization)
-      page = Document.strings(Document.parse(response.body.to_s), ['tags'])
+      page = Document.strings(Http.document(response), 'tags')
       next_page = Registry.next_page(url, T.let(response.fetch('link', ''), String))
       next_page ? page + tags(next_page) : page
     end
 
-    # The digest the tag currently points to.
+    # The digest the tag currently points to ("" when the registry names none).
     # @param tag [String]
     # @return [String] e.g. "sha256:0123..."
     sig { params(tag: String).returns(String) }
@@ -78,21 +80,33 @@ module Outdated
 
     private
 
-    # The Authorization header for this repository: an anonymous pull token when the registry asks for one.
+    # The Authorization header of the requests for this repository: the anonymous pull token, if the registry
+    # asks for one.
+    # @return [Hash{Symbol => String}]
     sig { returns(T::Hash[Symbol, String]) }
     def authorization
-      @authorization ||=
-        begin
-          response = Http.get("https://#{@host}/v2/")
-          response.is_a?(Net::HTTPUnauthorized) ? { Authorization: "Bearer #{token(response)}" } : {}
-        end
+      @token.empty? ? {} : { Authorization: "Bearer #{@token}" }
     end
 
+    # An anonymous pull token for this repository when the registry asks for one (it answers 401 Unauthorized),
+    # else "".
+    # @return [String]
+    sig { returns(String) }
+    def token
+      case (response = Http.get("https://#{@host}/v2/"))
+      when Net::HTTPUnauthorized then pull_token(response)
+      else ''
+      end
+    end
+
+    # An anonymous pull token for this repository, from the token service the challenge of +response+ names.
+    # @param response [Net::HTTPResponse] the 401 Unauthorized response
+    # @return [String]
     sig { params(response: Net::HTTPResponse).returns(String) }
-    def token(response)
-      challenge = Challenge.new(T.let(response.fetch('www-authenticate', ''), String))
+    def pull_token(response)
+      challenge = Challenge.new(T.let(response.fetch('www-authenticate'), String))
       body = Http.json(challenge.token_url(@host, @repository))
-      Document.string(body, [Document.key?(body, ['token']) ? 'token' : 'access_token'])
+      Document.string(body, [Document.key?(body, 'token') ? 'token' : 'access_token'])
     end
 
     # A `WWW-Authenticate: Bearer realm="...",service="..."` challenge.
@@ -102,8 +116,7 @@ module Outdated
       # @param header [String] the WWW-Authenticate header
       sig { params(header: String).void }
       def initialize(header)
-        @fields = T.let({}, T::Hash[String, String])
-        header.scan(/(\w+)="([^"]*)"/) { @fields[Regexp.last_match(1).to_s] = Regexp.last_match(2).to_s }
+        @header = header
       end
 
       # The URL that issues a pull token for +repository+.
@@ -112,8 +125,20 @@ module Outdated
       # @return [String]
       sig { params(host: String, repository: String).returns(String) }
       def token_url(host, repository)
-        query = URI.encode_www_form(service: @fields.fetch('service', host), scope: "repository:#{repository}:pull")
-        "#{@fields.fetch('realm')}?#{query}"
+        query = URI.encode_www_form(service: fields.fetch('service', host), scope: "repository:#{repository}:pull")
+        "#{fields.fetch('realm')}?#{query}"
+      end
+
+      private
+
+      # The fields of the challenge: name => value.
+      # @return [Hash{String => String}]
+      sig { returns(T::Hash[String, String]) }
+      def fields
+        @header.delete_prefix('Bearer ').split(/,\s*/).to_h do |field|
+          name, _, value = field.partition('=')
+          [name, value.delete_prefix('"').delete_suffix('"')]
+        end
       end
     end
   end

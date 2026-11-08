@@ -12,6 +12,10 @@ module Outdated
   class Nginx
     extend T::Sig
 
+    # A release tag of nginx: "release-" and the version.
+    RELEASE = /\Arelease-\d+\.\d+\.\d+\z/
+    private_constant :RELEASE
+
     # @param report [Report]
     sig { params(report: Report).void }
     def initialize(report)
@@ -22,9 +26,9 @@ module Outdated
     sig { void }
     def check
       tags = GitTags.of('https://github.com/nginx/nginx').keys
-      newest = Outdated.newest(tags.filter_map { |tag| tag[/\Arelease-(\d+\.\d+\.\d+)\z/, 1] })
-      built = File.read(File.join(ROOT, 'Dockerfile'))[/^ARG NGINX_VERSION=(\S+)/, 1].to_s
-      @report.compare('nginx (Dockerfile ARG NGINX_VERSION)', built, newest)
+      releases = tags.grep(RELEASE) { |tag| tag.delete_prefix('release-') }
+      newest = Outdated.newest(releases)
+      @report.compare('nginx (Dockerfile ARG NGINX_VERSION)', Outdated.dockerfile_arg('NGINX_VERSION'), newest)
     end
   end
 end

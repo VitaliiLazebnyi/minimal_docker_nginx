@@ -1,0 +1,3 @@
+# Semgrep scans every file git tracks. Without a .semgrepignore file of its own, a repository gets Semgrep's default
+# ignore list, which skips test/ and vendor/; this file, which ignores nothing, replaces it. It must not list any
+# path (script/forbidden_suppressions.sh).
