@@ -1,13 +1,15 @@
 #!/usr/bin/env bash
 # Runs the checks of this repository. Every CI job runs its checks through this script (each step names them), so
-# a local `script/check` runs exactly what CI runs.
+# a local `script/check` runs exactly what CI runs. A check fails when its command fails, and when its output contains
+# a warning or a deprecation notice (script/warnings.sh), as the warning gate of every workflow fails CI.
 #
 # Usage: script/check [check...]   (no argument: every check, in the order below)
 #
 # The Ruby checks need the bundle of rails_app/ (`bundle install`). The linters come from tools/requirements.txt
 # (`pip install --require-hashes -r tools/requirements.txt`) and tools/binaries.json (script/install_binaries.sh on
 # Linux x86-64; elsewhere the same release of each tool); the Docker checks run the images of tools/images.json.
-# zizmor runs its online audits when GH_TOKEN is set. CI runs `mutant` on the Ruby line of
+# zizmor runs its online audits when GH_TOKEN is set; lychee checks the links to GitHub with GITHUB_TOKEN, when set.
+# CI runs `mutant` on the Ruby line of
 # .github/workflows/mutation.yml (see script/outdated_holds.yml); locally it runs on the Ruby in the PATH.
 set -euo pipefail
 
@@ -16,7 +18,7 @@ cd "${root}"
 
 ruby_checks=(spec rubocop typecheck yard reek flay flog debride brakeman audit outdated mutant)
 lint_checks=(suppressions actionlint zizmor shellcheck shfmt typos rumdl yamllint editorconfig)
-docker_checks=(hadolint buildkit trivy_config gitleaks trivy_fs image)
+docker_checks=(lychee semgrep hadolint buildkit trivy_config gitleaks trivy_fs image)
 all_checks=("${ruby_checks[@]}" "${lint_checks[@]}" "${docker_checks[@]}")
 
 # The shell scripts of the repository (ShellCheck and shfmt).
@@ -24,17 +26,13 @@ shell_files=(script/*.sh script/check test/image/*.sh docker_config/entrypoint.s
 # ShellCheck at its strictest: every optional check, every severity.
 shellcheck_options=(--enable=all --severity=style)
 
-# Ruby warnings: every command runs with -w, so a warning from the code of this repository fails the suite and any
-# other warning fails the warning gate of CI. The exceptions are the third-party tools whose own sources print
-# verbose-mode warnings that this repository cannot fix: RuboCop (through kramdown, which rubocop-md loads), Tapioca
-# (`typecheck`), YARD, Brakeman and bundler-audit (`audit`). They keep the deprecation and performance categories.
-all_warnings='-w -W:deprecated -W:performance'
-tool_warnings='-W:deprecated -W:performance'
+# Every Ruby command runs with every warning category on, the development tools included: a warning from the code of
+# this repository fails the suite, and any other warning fails the check (script/warnings.sh lists the few warnings of
+# third-party gems that cannot be avoided).
+export RUBYOPT='-w -W:deprecated -W:performance'
 
 rake() {
-  local warnings=$1
-  shift
-  (cd rails_app && RUBYOPT="${warnings}" bundle exec rake "$@")
+  (cd rails_app && bundle exec rake "$@")
 }
 
 # The reference name:tag@digest of an image of tools/images.json.
@@ -42,23 +40,24 @@ image() {
   jq --exit-status --raw-output --arg key "$1" '.[$key] | "\(.name):\(.tag)@\(.digest)"' tools/images.json
 }
 
-check_spec() { rake "${all_warnings}" spec; }
-check_rubocop() { rake "${tool_warnings}" rubocop; }
-check_typecheck() { rake "${tool_warnings}" typecheck; }
-check_yard() { rake "${tool_warnings}" yard; }
-check_reek() { rake "${all_warnings}" reek; }
-check_flay() { rake "${all_warnings}" flay; }
-check_flog() { rake "${all_warnings}" flog; }
-check_debride() { rake "${all_warnings}" debride; }
-check_brakeman() { rake "${tool_warnings}" brakeman; }
-check_audit() { rake "${tool_warnings}" audit; }
-check_outdated() { rake "${all_warnings}" outdated; }
-check_mutant() { rake "${all_warnings}" mutant; }
+check_spec() { rake spec; }
+check_rubocop() { rake rubocop; }
+check_typecheck() { rake typecheck; }
+check_yard() { rake yard; }
+check_reek() { rake reek; }
+check_flay() { rake flay; }
+check_flog() { rake flog; }
+check_debride() { rake debride; }
+check_brakeman() { rake brakeman; }
+check_audit() { rake audit; }
+check_outdated() { rake outdated; }
+check_mutant() { LANG=C.UTF-8 LC_ALL=C.UTF-8 rake mutant; }
 
 check_suppressions() { script/forbidden_suppressions.sh; }
 # actionlint runs ShellCheck (with the options above) on every `run:` block of the workflows.
 check_actionlint() { SHELLCHECK_OPTS="${shellcheck_options[*]}" actionlint -color; }
-check_zizmor() { zizmor --persona=pedantic --format=plain .; }
+# zizmor's strictest persona: every audit, the pedantic and the auditor-only findings included.
+check_zizmor() { zizmor --persona=auditor --format=plain .; }
 check_shellcheck() { shellcheck "${shellcheck_options[@]}" "${shell_files[@]}"; }
 # shfmt reads its options from .editorconfig.
 check_shfmt() { shfmt --diff "${shell_files[@]}"; }
@@ -66,6 +65,32 @@ check_typos() { typos; }
 check_rumdl() { rumdl check --deny-config-warnings .; }
 check_yamllint() { yamllint --strict .; }
 check_editorconfig() { editorconfig-checker; }
+
+# Every link of every Markdown file: external links, relative paths and #anchors (lychee.toml).
+check_lychee() {
+  local lychee_image listing markdown
+  lychee_image=$(image lychee)
+  listing=$(git ls-files '*.md')
+  mapfile -t markdown <<<"${listing}"
+  docker run --rm --volume "${root}:/repository:ro" --workdir /repository --env GITHUB_TOKEN "${lychee_image}" \
+    --config lychee.toml --root-dir /repository "${markdown[@]}"
+}
+
+# Semgrep with the rule packs of every language and file type of the repository (Ruby and Rails, shell, Dockerfile,
+# nginx, GitHub Actions, secrets) and the cross-language security packs; every finding fails (--error).
+semgrep_packs=(
+  default ruby secrets security-audit github-actions dockerfile docker nginx command-injection insecure-transport
+  owasp-top-ten cwe-top-25 r2c-best-practices r2c-bug-scan xss sql-injection brakeman supply-chain jwt
+)
+check_semgrep() {
+  local semgrep_image pack configs=()
+  semgrep_image=$(image semgrep)
+  for pack in "${semgrep_packs[@]}"; do
+    configs+=(--config "p/${pack}")
+  done
+  docker run --rm --volume "${root}:/repository:ro" --workdir /repository "${semgrep_image}" \
+    semgrep scan "${configs[@]}" --error --metrics=off --disable-version-check --quiet .
+}
 
 # hadolint fails on every finding, style included (.hadolint.yaml).
 check_hadolint() {
@@ -197,7 +222,14 @@ for name in "$@"; do
     exit 2
   fi
 done
+log=$(mktemp)
+trap 'rm -f "${log}"' EXIT
 for name in "$@"; do
   echo "==> ${name}"
-  "check_${name}"
+  "check_${name}" 2>&1 | tee "${log}"
+  if ! hits=$(script/warnings.sh <"${log}"); then
+    printf '==> %s printed warnings:\n%s\n' "${name}" "${hits}" >&2
+    exit 1
+  fi
 done
+echo "==> All checks passed: $*"

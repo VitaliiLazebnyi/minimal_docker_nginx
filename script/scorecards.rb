@@ -1,4 +1,3 @@
-#!/usr/bin/env ruby
 # typed: strong
 # frozen_string_literal: true
 
@@ -9,7 +8,8 @@
 # no longer needed (the package is gone from every lockfile, or its score reached the threshold).
 #
 # It replaces the warning-only Scorecard report of actions/dependency-review-action, which has no per-package
-# allowance: the Dependency review job passes the action's `dependency-changes` output as DEPENDENCY_CHANGES.
+# allowance: the Dependency review job runs `bundle exec rake scorecards` in rails_app/ with the action's
+# `dependency-changes` output as DEPENDENCY_CHANGES.
 # Scores are looked up the way the action does: the repository URL of the change (deps.dev when it has none), then
 # api.securityscorecards.dev.
 
@@ -38,6 +38,24 @@ module Scorecards
     sig { returns(Allowances) }
     def self.load
       new(Outdated::Document.load(File.join(Outdated::ROOT, 'script', 'scorecard_allowances.yml')))
+    end
+
+    # The contents of the lockfiles (LOCKFILES).
+    # @return [Array<String>]
+    sig { returns(T::Array[String]) }
+    def self.lockfiles
+      LOCKFILES.map { |path| File.read(File.join(Outdated::ROOT, path)) }
+    end
+
+    # Whether a lockfile has the package +key+.
+    # @param lockfiles [Array<String>] the contents of the lockfiles
+    # @param key [String] "ecosystem/name"
+    # @return [Boolean]
+    sig { params(lockfiles: T::Array[String], key: String).returns(T::Boolean) }
+    def self.locked?(lockfiles, key)
+      _, _, name = key.partition('/')
+      entry = /^\s*#{Regexp.escape(name)}[ (=]/
+      lockfiles.any? { |lockfile| lockfile.match?(entry) }
     end
 
     # @param document [Object] the parsed allowance file
@@ -71,19 +89,19 @@ module Scorecards
     # @param report [Outdated::Report]
     sig { params(report: Outdated::Report).void }
     def check_locked(report)
-      locked = LOCKFILES.map { |path| File.read(File.join(Outdated::ROOT, path)) }
-                        .join("\n")
-      Outdated::Document.keys(@document, []).each do |key|
-        name = Regexp.escape(key.split('/', 2).last.to_s)
-        report.problem("stale allowance: #{key} is in no lockfile") unless locked.match?(/^\s*#{name}[ (=]/)
-      end
+      lockfiles = Allowances.lockfiles
+      stale = Outdated::Document.keys(@document, []).reject { |key| Allowances.locked?(lockfiles, key) }
+      stale.each { |key| report.problem("stale allowance: #{key} is in no lockfile") }
     end
 
     private
 
+    # Whether script/scorecard_allowances.yml allows the package +key+.
+    # @param key [String] "ecosystem/name"
+    # @return [Boolean]
     sig { params(key: String).returns(T::Boolean) }
     def allowed?(key)
-      Outdated::Document.key?(@document, [key])
+      Outdated::Document.key?(@document, key)
     end
   end
 
@@ -101,13 +119,11 @@ module Scorecards
     # @return [Dependency]
     sig { params(change: Object).returns(Dependency) }
     def self.from(change)
-      repository = Outdated::Document.at(change, ['source_repository_url'])
-      field = ->(key) { Outdated::Document.string(change, [key]) }
       new(
-        ecosystem: field.call('ecosystem'),
-        name: field.call('name'),
-        version: field.call('version'),
-        repository: repository.is_a?(String) ? repository : ''
+        ecosystem: Outdated::Document.string(change, ['ecosystem']),
+        name: Outdated::Document.string(change, ['name']),
+        version: Outdated::Document.string(change, ['version']),
+        repository: Outdated::Document.at(change, ['source_repository_url']).to_s
       )
     end
 
@@ -134,6 +150,7 @@ module Scorecards
     private
 
     # The repository whose Scorecard applies and its score (nil when there is none).
+    # @return [Array(String, Float), Array(nil, nil), Array(String, nil)]
     sig { returns([T.nilable(String), T.nilable(Float)]) }
     def scorecard
       found = project
@@ -141,13 +158,14 @@ module Scorecards
     end
 
     # The repository whose Scorecard applies: the change's own, else the one deps.dev relates to the version.
+    # @return [String, nil]
     sig { returns(T.nilable(String)) }
     def project
       return repository.delete_prefix('https://') unless repository.empty?
 
       path = [ecosystem, 'packages', name, 'versions', version].map { |part| URI.encode_uri_component(part) }
       response = Outdated::Http.find("https://api.deps.dev/v3/systems/#{path.join('/')}")
-      Scorecards.first_project(Outdated::Document.parse(response.body.to_s)) if response
+      Scorecards.first_project(Outdated::Http.document(response)) if response
     end
   end
 
@@ -156,11 +174,7 @@ module Scorecards
   # @return [String, nil]
   sig { params(document: Object).returns(T.nilable(String)) }
   def self.first_project(document)
-    projects = Outdated::Document.key?(
-      document,
-      ['relatedProjects']
-    ) && Outdated::Document.at(document, ['relatedProjects'])
-    first = projects.is_a?(Array) ? T.let(projects.first, Object) : nil
+    first = Outdated::Document.list(document, 'relatedProjects').first
     Outdated::Document.string(first, %w[projectKey id]) if first
   end
 
@@ -170,22 +184,29 @@ module Scorecards
   sig { params(project: String).returns(T.nilable(Float)) }
   def self.score(project)
     response = Outdated::Http.find("https://api.securityscorecards.dev/projects/#{project}")
-    value = response && Outdated::Document.at(Outdated::Document.parse(response.body.to_s), ['score'])
+    value = response && Outdated::Document.at(Outdated::Http.document(response), ['score'])
     Float(value) if value.is_a?(Numeric)
   end
 
   # The dependencies added by the pull request (the `dependency-changes` output of dependency-review-action).
   # @param json [String]
   # @return [Array<Dependency>]
+  # @raise [ArgumentError] when the document is not a list
   sig { params(json: String).returns(T::Array[Dependency]) }
   def self.added(json)
-    changes = Outdated::Document.parse(json)
-    return [] unless changes.is_a?(Array)
-
-    changes.filter_map do |item|
-      change = T.let(item, Object)
-      Dependency.from(change) if Outdated::Document.string(change, ['change_type']) == 'added'
+    case (changes = Outdated::Document.parse(json))
+    when Array then additions(changes)
+    else raise(ArgumentError, "the dependency changes are not a list: #{changes.inspect}")
     end
+  end
+
+  # The dependencies of the changes whose type is "added".
+  # @param changes [Array<Object>] the changes of the `dependency-changes` output of dependency-review-action
+  # @return [Array<Dependency>]
+  sig { params(changes: T::Array[Object]).returns(T::Array[Dependency]) }
+  def self.additions(changes)
+    added = changes.select { |change| Outdated::Document.string(change, ['change_type']) == 'added' }
+    added.map { |change| Dependency.from(change) }
   end
 
   # Runs the check and returns the process exit status.
@@ -207,5 +228,3 @@ module Scorecards
     allowances.check_locked(report)
   end
 end
-
-exit(Scorecards.run) if T.let($PROGRAM_NAME, String) == __FILE__

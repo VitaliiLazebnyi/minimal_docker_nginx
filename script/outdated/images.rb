@@ -14,7 +14,8 @@ module Outdated
   class Images
     extend T::Sig
 
-    REFERENCE = %r{(?<name>[a-z0-9][a-z0-9./_-]*):(?<tag>\w[\w.-]*)@sha256:(?<digest>\h{64})}
+    # An image pinned as name:tag@sha256:digest.
+    REFERENCE = %r{(?<name>[a-z0-9][a-z0-9./_-]*):(?<tag>\w[\w.-]*)@(?<digest>sha256:\h{64})}
     private_constant :REFERENCE
 
     # An image reference found in a file.
@@ -31,10 +32,9 @@ module Outdated
       sig { params(report: Report).void }
       def check(report)
         registry = Registry.for(name)
-        pinned = tag
-        label = "#{name}:#{pinned} (#{location})"
-        report.compare("image tag of #{label}", pinned, Images.newest_tag(registry.tags, pinned))
-        report.compare("image digest of #{label}", digest, registry.digest(pinned))
+        label = "#{name}:#{tag} (#{location})"
+        report.compare("image tag of #{label}", tag, Images.newest_tag(registry.tags, tag))
+        report.compare("image digest of #{label}", digest, registry.digest(tag))
       end
     end
 
@@ -44,8 +44,13 @@ module Outdated
     sig { params(path: String).returns(T::Array[Pin]) }
     def self.pins_in(path)
       location = Outdated.relative(path)
-      File.read(path).scan(REFERENCE).map do |name, tag, digest|
-        Pin.new(location:, name: name.to_s, tag: tag.to_s, digest: "sha256:#{digest}")
+      Outdated.matches(File.read(path), REFERENCE).map do |match|
+        Pin.new(
+          location:,
+          name: Outdated.group(match, 'name'),
+          tag: Outdated.group(match, 'tag'),
+          digest: Outdated.group(match, 'digest')
+        )
       end
     end
 
@@ -56,17 +61,16 @@ module Outdated
     # @return [String]
     sig { params(tags: T::Array[String], tag: String).returns(String) }
     def self.newest_tag(tags, tag)
-      parts = tag.split(/\d+/, -1).map { |part| Regexp.escape(part) }
-      shape = Regexp.new("\\A#{parts.join('(\d+)')}\\z")
-      tags.grep(shape).max_by { |candidate| numbers(candidate) } || tag
+      shape = Regexp.new("\\A#{Regexp.escape(tag).gsub(/\d+/, '\d+')}\\z")
+      tags.grep(shape).max_by { |candidate| version(candidate) } || tag
     end
 
-    # The numbers in +tag+, in order ("4.0.9-alpine3.24" => [4, 0, 9, 3, 24]).
+    # The numbers in +tag+, in order, as a version ("v4.0.9-alpine3.24" => 4.0.9.3.24).
     # @param tag [String]
-    # @return [Array<Integer>]
-    sig { params(tag: String).returns(T::Array[Integer]) }
-    def self.numbers(tag)
-      tag.scan(/\d+/).map { |number| Integer(number.to_s, 10) }
+    # @return [Gem::Version]
+    sig { params(tag: String).returns(Gem::Version) }
+    def self.version(tag)
+      Gem::Version.new(tag.scan(/\d+/).join('.'))
     end
 
     # The images of tools/images.json, each pinned as name, tag and digest.

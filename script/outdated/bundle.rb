@@ -15,27 +15,38 @@ module Outdated
   class Bundle
     extend T::Sig
 
-    OUTDATED_LINE = /^(\S+) \(newest ([^,\s]+), installed ([^,)\s]+)/
+    # A line of `bundle outdated --parseable`: the gem, its newest release and the installed version.
+    OUTDATED_LINE = /^(?<name>\S+) \(newest (?<newest>[^,\s]+), installed (?<installed>[^,)\s]+)/
     private_constant :OUTDATED_LINE
 
-    # [name, newest, installed] of every gem `bundle outdated` reports; raises when it cannot check.
+    # [name, newest, installed] of every gem `bundle outdated` reports.
     # @return [Array<Array(String, String, String)>]
+    # @raise [Error] when `bundle outdated` cannot check
     sig { returns(T::Array[[String, String, String]]) }
     def self.outdated_gems
+      output, status = bundle_outdated
+      # Exit status 1 only means that some gem is outdated; a killed process has no exit status.
+      code = status.exitstatus || 2
+      raise(Error, "bundle outdated failed (#{code}):\n#{output}") if code > 1
+
+      Outdated.matches(output, OUTDATED_LINE).map do |match|
+        [Outdated.group(match, 'name'), Outdated.group(match, 'newest'), Outdated.group(match, 'installed')]
+      end
+    end
+
+    # Runs `bundle outdated --parseable` in rails_app/.
+    # @return [Array(String, Process::Status)] its output (standard output and error) and its exit status
+    sig { returns([String, Process::Status]) }
+    def self.bundle_outdated
       # `bundle outdated` refuses to run in deployment mode (which CI's setup-ruby configures); it only reads the
       # lockfile and the gem index, so it runs with deployment and frozen mode off.
-      output, status = Open3.capture2e(
+      Open3.capture2e(
         { 'BUNDLE_DEPLOYMENT' => 'false', 'BUNDLE_FROZEN' => 'false' },
         'bundle',
         'outdated',
         '--parseable',
         chdir: APP
       )
-      # Exit status 1 only means that some gem is outdated; a killed process has no exit status.
-      code = status.exitstatus || 2
-      raise(Error, "bundle outdated failed (#{code}):\n#{output}") if code > 1
-
-      output.scan(OUTDATED_LINE).map { |name, newest, installed| [name.to_s, newest.to_s, installed.to_s] }
     end
 
     # @param report [Report]
@@ -58,6 +69,7 @@ module Outdated
 
     private
 
+    # Reports every outdated gem that is not held, and every hold of a gem that is no longer outdated.
     sig { void }
     def check_gems
       outdated = Bundle.outdated_gems
@@ -67,6 +79,10 @@ module Outdated
       end
     end
 
+    # Reports an outdated gem: informational when it is held back from exactly +newest+, else a problem.
+    # @param name [String]
+    # @param newest [String]
+    # @param installed [String]
     sig { params(name: String, newest: String, installed: String).void }
     def check_gem(name, newest, installed)
       if @holds[name] == newest
@@ -76,27 +92,33 @@ module Outdated
       end
     end
 
+    # The Bundler of Gemfile.lock (BUNDLED WITH) must be the newest.
     sig { void }
     def check_bundler
       newest = Document.string(Http.json('https://rubygems.org/api/v1/versions/bundler/latest.json'), ['version'])
-      @report.compare('Bundler (Gemfile.lock, BUNDLED WITH)', @lockfile[/^BUNDLED WITH\n\s+(\S+)/, 1].to_s, newest)
+      used = Outdated.extract(@lockfile, /^BUNDLED WITH\n\s+(?<value>\S+)/)
+      @report.compare('Bundler (Gemfile.lock, BUNDLED WITH)', used, newest)
     end
 
+    # The RubyGems the Dockerfile installs must be the newest.
     sig { void }
     def check_rubygems
       newest = Document.string(
         Http.json('https://rubygems.org/api/v1/versions/rubygems-update/latest.json'),
         ['version']
       )
-      built = File.read(File.join(ROOT, 'Dockerfile'))[/^ARG RUBYGEMS_VERSION=(\S+)/, 1].to_s
-      @report.compare('RubyGems (Dockerfile ARG RUBYGEMS_VERSION)', built, newest)
+      @report.compare('RubyGems (Dockerfile ARG RUBYGEMS_VERSION)', Outdated.dockerfile_arg('RUBYGEMS_VERSION'), newest)
     end
 
+    # The Passenger the Dockerfile builds must be the one of Gemfile.lock.
     sig { void }
     def check_passenger
-      built = File.read(File.join(ROOT, 'Dockerfile'))[/^ARG PASSENGER_VERSION=(\S+)/, 1].to_s
-      locked = @lockfile[/^    passenger \(([^)]+)\)/, 1].to_s
-      @report.compare('Passenger (Dockerfile ARG PASSENGER_VERSION, must match Gemfile.lock)', built, locked)
+      locked = Outdated.extract(@lockfile, /^    passenger \((?<value>[^)]+)\)/)
+      @report.compare(
+        'Passenger (Dockerfile ARG PASSENGER_VERSION, must match Gemfile.lock)',
+        Outdated.dockerfile_arg('PASSENGER_VERSION'),
+        locked
+      )
     end
   end
 end

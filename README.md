@@ -38,18 +38,22 @@ Every gate runs in CI on every pull request and on every push to `main`, through
 checks locally, see [CONTRIBUTING.md](CONTRIBUTING.md)); every workflow ends with a warning gate that fails when the log
 of any of its jobs contains a warning or a deprecation notice, and every job runs behind an egress allow-list.
 
-- **CI**: RSpec with 100% line and branch coverage; RuboCop with every cop of RuboCop and of its plugins
+- **CI**: RSpec with 100% line, branch and method coverage of every file (the application, the helpers of the
+  Rakefile and the Ruby scripts of `script/`); RuboCop with every cop of RuboCop and of its plugins
   (`rubocop-rails`, `rubocop-rspec`, `rubocop-rspec_rails`, `rubocop-performance`, `rubocop-rake`, `rubocop-sorbet`,
   `rubocop-thread_safety`, `rubocop-yard`, `rubocop-md`, `rubocop-ai`); Sorbet (`typed: strong` for the application
-  and the scripts); YARD 100% documented without warnings; Reek, Flay, Flog and debride; outdated dependencies.
-- **Mutation testing**: Mutant on every subject of `app/`; every mutant must be killed.
+  and the scripts); YARD 100% documented, private objects included, without warnings; Reek, Flay, Flog and debride;
+  outdated dependencies. Every Ruby command runs with every warning category on (`-w`), the tools included.
+- **Mutation testing**: Mutant on every subject of the application, of the Rakefile helpers and of the scripts; every
+  mutant must be killed.
 - **Docker image**: hadolint (every severity), BuildKit build checks, the Trivy misconfiguration scan,
   container-structure-test, an end-to-end smoke test, Dockle, Trivy and Grype (fail on any fixable vulnerability),
   `nginx -t` and gixy.
-- **Security**: bundler-audit, Brakeman, Trivy (lockfiles and secrets), dependency review with an OpenSSF Scorecard
-  gate (per-package allowances), gitleaks (full history).
-- **Lint**: actionlint, zizmor (pedantic), ShellCheck (every optional check), shfmt, typos, rumdl (every rule),
-  yamllint (every rule, strict), editorconfig-checker, no inline suppressions.
+- **Security**: bundler-audit, Brakeman, Semgrep (the rule packs of every language of the repository), Trivy
+  (lockfiles and secrets), dependency review with an OpenSSF Scorecard gate (per-package allowances), gitleaks (full
+  history).
+- **Lint**: actionlint, zizmor (auditor), ShellCheck (every optional check), shfmt, typos, rumdl (every rule), lychee
+  (every link and anchor), yamllint (every rule, strict), editorconfig-checker, no inline suppressions.
 - **CodeQL**: the Ruby code and the workflows, with the security-extended and security-and-quality suites.
 - **OpenSSF Scorecard** (on `main`): published to the Scorecard API and to code scanning.
 

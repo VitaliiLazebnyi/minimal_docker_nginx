@@ -37,14 +37,16 @@ module Outdated
       keys(node, []).reject { |key| key.start_with?('$') }
     end
 
-    # Whether the mapping at +keys+ (all but the last) has the last key.
+    # Whether +node+ is a mapping that has +key+.
     # @param node [Object] a parsed document
-    # @param keys [Array<String>]
+    # @param key [String]
     # @return [Boolean]
-    sig { params(node: Object, keys: T::Array[String]).returns(T::Boolean) }
-    def self.key?(node, keys)
-      parent = at(node, keys[0...-1] || [])
-      parent.is_a?(Hash) && parent.key?(keys.last)
+    sig { params(node: Object, key: String).returns(T::Boolean) }
+    def self.key?(node, key)
+      case node
+      when Hash then node.key?(key)
+      else false
+      end
     end
 
     # The value at +keys+.
@@ -54,9 +56,10 @@ module Outdated
     sig { params(node: Object, keys: T::Array[String]).returns(Object) }
     def self.at(node, keys)
       keys.reduce(node) do |current, key|
-        raise(ArgumentError, "no #{key.inspect} in #{current.inspect[0, 80]}") unless current.is_a?(Hash)
-
-        T.let(current.fetch(key), Object)
+        case current
+        when Hash then T.let(current.fetch(key), Object)
+        else raise(ArgumentError, "no #{key.inspect} in #{current.inspect[0, 80]}")
+        end
       end
     end
 
@@ -66,10 +69,10 @@ module Outdated
     # @return [String]
     sig { params(node: Object, keys: T::Array[String]).returns(String) }
     def self.string(node, keys)
-      value = at(node, keys)
-      raise(ArgumentError, "#{keys.join('.')} is not a string: #{value.inspect}") unless value.is_a?(String)
-
-      value
+      case (value = at(node, keys))
+      when String then value
+      else raise(ArgumentError, "#{keys.join('.')} is not a string: #{value.inspect}")
+      end
     end
 
     # The keys of the mapping at +keys+.
@@ -78,23 +81,33 @@ module Outdated
     # @return [Array<String>]
     sig { params(node: Object, keys: T::Array[String]).returns(T::Array[String]) }
     def self.keys(node, keys)
-      value = at(node, keys)
-      raise(ArgumentError, "#{keys.join('.')} is not a mapping: #{value.inspect}") unless value.is_a?(Hash)
-
-      value.keys.map { |key| T.let(key, Object).to_s }
+      case (value = at(node, keys))
+      when Hash then value.keys.map { |key| T.let(key, Object).to_s }
+      else raise(ArgumentError, "#{keys.join('.')} is not a mapping: #{value.inspect}")
+      end
     end
 
-    # The strings of the list at +keys+ (an absent or null list is empty).
+    # The items of the list under +key+ of the mapping +node+ (an absent or null list is empty).
     # @param node [Object] a parsed document
-    # @param keys [Array<String>]
-    # @return [Array<String>]
-    sig { params(node: Object, keys: T::Array[String]).returns(T::Array[String]) }
-    def self.strings(node, keys)
-      case (value = key?(node, keys) ? at(node, keys) : [])
-      when Array then value.map { |item| T.let(item, Object).to_s }
-      when NilClass then []
-      else raise(ArgumentError, "#{keys.join('.')} is not a list: #{value.inspect}")
+    # @param key [String]
+    # @return [Array<Object>]
+    sig { params(node: Object, key: String).returns(T::Array[Object]) }
+    def self.list(node, key)
+      return [] unless key?(node, key)
+
+      case (value = at(node, [key]) || [])
+      when Array then value
+      else raise(ArgumentError, "#{key} is not a list: #{value.inspect}")
       end
+    end
+
+    # The items of the list under +key+ of the mapping +node+, as strings (an absent or null list is empty).
+    # @param node [Object] a parsed document
+    # @param key [String]
+    # @return [Array<String>]
+    sig { params(node: Object, key: String).returns(T::Array[String]) }
+    def self.strings(node, key)
+      list(node, key).map(&:to_s)
     end
   end
 end

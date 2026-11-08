@@ -18,13 +18,71 @@ extend-enable = [
 line-length = 120
 respect-gitignore = true
 
+# Every rule whose default only asks for consistency within a file is given the one style the repository uses, and
+# every rule with a lenient default is tightened (in markdownlint-cli2's terms: the strictest settings any repository of
+# this owner uses).
+
+# ATX headings (`#`) everywhere.
+[MD003]
+style = "atx"
+
 # Lists use dashes everywhere.
 [MD004]
 style = "dash"
 
+# No trailing whitespace at all, not even the two-space hard line break.
+[MD009]
+br-spaces = 0
+strict = true
+
+# Prose, headings, code blocks and tables wrap at 120 columns.
 [MD013]
+code-blocks = true
+headings = true
 line-length = 120
 tables = true
+
+# No two headings of a document share their text, wherever they are.
+[MD024]
+siblings-only = false
+
+# No heading ends with punctuation, a question mark included.
+[MD026]
+punctuation = ".,;:!?"
+
+# Ordered lists are numbered 1, 2, 3.
+[MD029]
+style = "ordered"
+
+# Horizontal rules are written `---`.
+[MD035]
+style = "---"
+
+# Code blocks are fenced with backticks.
+[MD046]
+style = "fenced"
+
+[MD048]
+style = "backtick"
+
+# Emphasis uses underscores, strong emphasis asterisks.
+[MD049]
+style = "underscore"
+
+[MD050]
+style = "asterisk"
+
+# Link fragments match the case of the heading they point to.
+[MD051]
+ignore-case = false
+
+# Shortcut reference links (`[label]`) must have a definition too.
+[MD052]
+shortcut-syntax = true
+
+# Tables have a leading and a trailing pipe on every row.
+[MD055]
+style = "leading_and_trailing"
 
 # The names of the tools and projects the documents mention, in their own spelling.
 [MD044]

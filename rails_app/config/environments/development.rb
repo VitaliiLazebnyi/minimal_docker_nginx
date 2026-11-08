@@ -14,8 +14,9 @@ Rails.application.configure do
   # Do not eager load code on boot.
   config.eager_load = false
 
-  # Show full error reports.
-  config.consider_all_requests_local = true
+  # No detailed error report in a response, in any environment (the log has the details): what the application
+  # answers on an error is the same everywhere.
+  config.consider_all_requests_local = false
 
   # Enable server timing.
   config.server_timing = true
@@ -31,8 +32,8 @@ Rails.application.configure do
   # Change to :null_store to avoid any caching.
   config.cache_store = :memory_store
 
-  # Print deprecation notices to the Rails logger.
-  config.active_support.deprecation = :log
+  # Deprecations are errors, as in the test environment.
+  config.active_support.deprecation = :raise
 
   # Raise an error on page load if there are pending migrations.
   config.active_record.migration_error = :page_load

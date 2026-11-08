@@ -22,8 +22,20 @@ AllCops:
   SuggestExtensions: false
   TargetRubyVersion: 4.0
 
-# The same width as Markdown (rumdl MD013), YAML (yamllint) and every other file (.editorconfig).
+# The continuation lines of a string are indented by one step rather than aligned with the string: editorconfig-checker
+# requires every indentation to be a multiple of two spaces (.editorconfig), which an aligned string seldom is. The
+# style of the other repositories of this owner.
+Layout/LineEndStringConcatenationIndentation:
+  EnforcedStyle: indented
+
+# The same width as Markdown (rumdl MD013), YAML (yamllint) and every other file (.editorconfig), with no
+# exception: a long URI, qualified name, heredoc line or directive is wrapped like any other line.
 Layout/LineLength:
+  AllowCopDirectives: false
+  AllowHeredoc: false
+  AllowQualifiedName: false
+  AllowURI: false
+  AllowedPatterns: []
   Max: 120
 
 # Requires a leading `::` on every constant. Style/RedundantConstantBase (enabled) forbids exactly that prefix,
@@ -42,6 +54,12 @@ Naming/BlockForwarding:
 RSpec/DescribeMethod:
   Exclude:
     - spec/requests/**/*.rb
+
+# The specs are `typed: strict`, so every memoized helper has a Sorbet signature: `sig { returns(...) }` right above
+# each `let`. This cop reads every such `sig` as a statement between two `let`s, and its autocorrection moves the
+# `let`s away from their signatures.
+RSpec/ScatteredLet:
+  Enabled: false
 
 # script/ (inspected with this configuration by `rake rubocop`) is plain Ruby for the whole repository; it does
 # not load Rails, so the Rails cops (which suggest ActiveSupport methods) do not apply to it.
@@ -91,8 +109,8 @@ Sorbet/RedundantExtendTSig:
 # The sigil ladder (Sorbet runs on every file below, see sorbet/config). The application, the scripts and the
 # rest of the configuration are `typed: strong` (no T.untyped value anywhere). Rails' environment files,
 # application.rb, ci.rb and the parameter filter configure Rails through methods whose RBIs return T.untyped,
-# and the specs call RSpec matchers that do, so those files are `typed: strict` (still a signature on every
-# method and a type on every constant).
+# and the specs (and the two spec helpers below) call RSpec matchers and mocks that do, so those files are
+# `typed: strict` (still a signature on every method and a type on every constant).
 Sorbet/StrictSigil:
   Exclude:
     - '**/*.md'
@@ -113,6 +131,10 @@ Sorbet/StrongSigil:
     - spec/**/*_spec.rb
     - spec/rails_helper.rb
     - spec/spec_helper.rb
+    # The spec helpers that set up RSpec mocks (`allow`, `receive`, `stub_const`) and parse canned HTTP responses
+    # (Net::HTTPResponse.read_new): their RBIs return T.untyped, like the matchers the specs call.
+    - spec/support/fake_https.rb
+    - spec/support/script_repository.rb
 
 Sorbet/TrueSigil:
   Exclude:

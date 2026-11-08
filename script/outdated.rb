@@ -1,4 +1,3 @@
-#!/usr/bin/env ruby
 # typed: strong
 # frozen_string_literal: true
 
@@ -9,8 +8,8 @@
 # of rails_app/, RubyGems, every pinned Ruby, the nginx release the image builds, the Docker images (tag and digest) of
 # the Dockerfile and the workflows, the GitHub Actions (tag and commit), and the Python tools.
 #
-# Run it with `bundle exec rake outdated` in rails_app/: it needs the application bundle (`bundle outdated`
-# and the installed Passenger gem).
+# `bundle exec rake outdated` in rails_app/ runs it: it needs the application bundle (`bundle outdated` and the
+# installed Passenger gem).
 
 require 'sorbet-runtime'
 
@@ -53,5 +52,3 @@ module Outdated
     ]
   end
 end
-
-exit(Outdated.run) if T.let($PROGRAM_NAME, String) == __FILE__

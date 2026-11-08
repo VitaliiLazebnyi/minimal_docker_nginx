@@ -4,6 +4,7 @@
 # Copyright (c) 2026 Vitalii Lazebnyi
 
 require 'sorbet-runtime'
+require_relative 'error'
 
 # The outdated check (script/outdated.rb): shared paths and helpers.
 module Outdated
@@ -30,6 +31,11 @@ module Outdated
       @prefix = prefix
       @problems = T.let(0, Integer)
     end
+
+    # The number of problems reported so far.
+    # @return [Integer]
+    sig { returns(Integer) }
+    attr_reader :problems
 
     # Prints an informational line.
     # @param message [String]
@@ -63,7 +69,7 @@ module Outdated
     # @return [Integer]
     sig { returns(Integer) }
     def status
-      @problems.zero? ? 0 : 1
+      problems.zero? ? 0 : 1
     end
   end
 
@@ -75,12 +81,53 @@ module Outdated
     path.delete_prefix("#{ROOT}/")
   end
 
-  # The highest of the given version numbers.
+  # The highest of the given version numbers ("" when there is none).
   # @param versions [Array<String>]
   # @return [String]
   sig { params(versions: T::Array[String]).returns(String) }
   def self.newest(versions)
     versions.max_by { |version| Gem::Version.new(version) }
             .to_s
+  end
+
+  # The match of +regex+ in each line of +text+ that has one.
+  # @param text [String]
+  # @param regex [Regexp]
+  # @return [Array<MatchData>]
+  sig { params(text: String, regex: Regexp).returns(T::Array[MatchData]) }
+  def self.matches(text, regex)
+    text.each_line.filter_map { |line| regex.match(line) }
+  end
+
+  # The text of the named group +name+ of +match+.
+  # @param match [MatchData]
+  # @param name [String]
+  # @return [String]
+  # @raise [Error] when the group took no part in the match
+  sig { params(match: MatchData, name: String).returns(String) }
+  def self.group(match, name)
+    match[name] || raise(Error, "#{match.regexp.inspect} matched #{match.to_s.inspect} without #{name}")
+  end
+
+  # The group `value` of the first match of +regex+ in +text+.
+  # @param text [String]
+  # @param regex [Regexp] a pattern with a group named `value`
+  # @return [String]
+  # @raise [Error] when +text+ has no match
+  sig { params(text: String, regex: Regexp).returns(String) }
+  def self.extract(text, regex)
+    match = regex.match(text)
+    raise(Error, "no match of #{regex.inspect}") unless match
+
+    group(match, 'value')
+  end
+
+  # The value of the build argument +name+ in the Dockerfile.
+  # @param name [String]
+  # @return [String]
+  # @raise [Error] when the Dockerfile has no such ARG
+  sig { params(name: String).returns(String) }
+  def self.dockerfile_arg(name)
+    extract(File.read(File.join(ROOT, 'Dockerfile')), /^ARG #{name}=(?<value>\S+)$/)
   end
 end

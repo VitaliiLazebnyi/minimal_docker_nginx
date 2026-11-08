@@ -4,35 +4,19 @@
 # Copyright (c) 2026 Vitalii Lazebnyi
 
 require_relative 'config/application'
+require_relative 'lib/tasks/quality_gates'
 require 'active_support/core_ext/string/exclude'
-require 'tempfile'
 
 Rails.application.load_tasks
 
-# The quality gates of the application. Each task shells out to its tool, which loads what it needs itself;
-# only `debride` boots the application (it reads the routes). Rails defines `spec` (rspec-rails), the suite
-# that SimpleCov fails below 100% line and branch coverage and spec/spec_helper.rb fails on any warning,
-# pending or skipped example.
-module QualityGates
+# The tasks of the quality gates (their commands and helpers: lib/tasks/quality_gates.rb). Each task shells out to
+# its tool, which loads what it needs itself; only `debride` boots the application (it reads the routes). Rails
+# defines `spec` (rspec-rails), the suite that SimpleCov fails below 100% line, branch and method coverage and
+# spec/spec_helper.rb fails on any warning, pending or skipped example.
+module QualityGateTasks
   extend Rake::DSL
   extend T::Sig
-
-  # The repository root: the shell gates and the outdated check cover the whole repository, not only the app.
-  REPOSITORY_ROOT = T.let(File.expand_path('..', __dir__), String)
-  # Ruby code outside the application: the repository scripts (the outdated and Scorecard checks), linted,
-  # typed, documented and smell-checked with the application's configuration.
-  SCRIPTS = T.let(File.join(REPOSITORY_ROOT, 'script'), String)
-  # The Ruby code every analysis covers.
-  SOURCES = T.let(['app', 'lib', SCRIPTS].freeze, T::Array[String])
-  # Flay mass threshold. At the default (16) Flay only reports identical Sorbet `sig` declarations of sibling
-  # methods; from 24 up it reports every duplicated piece of logic.
-  FLAY_MASS = 24
-  # Flog score above which a single method counts as too complex and must be split up (Flog's own guidance:
-  # 0-10 is good, 11-20 needs a look, above 20 needs refactoring).
-  FLOG_METHOD_THRESHOLD = 20
-  # Output of `yard stats` when every public API object is documented.
-  FULLY_DOCUMENTED = '100.00% documented'
-  public_constant :REPOSITORY_ROOT, :SCRIPTS, :SOURCES, :FLAY_MASS, :FLOG_METHOD_THRESHOLD, :FULLY_DOCUMENTED
+  include QualityGates
 
   # Runs +command+, prints its output, and returns that output; aborts with +failure+ when it exits non-zero.
   # @param command [Array<String>]
@@ -41,20 +25,19 @@ module QualityGates
   # @return [String]
   sig { params(command: T::Array[String], failure: String, directory: String).returns(String) }
   def self.capture(command, failure, directory: Dir.pwd)
-    output = IO.popen(command, chdir: directory, err: %i[child out], &:read)
+    output, status = QualityGates.run(command, directory:)
     puts(output)
-    abort(failure) unless Process.last_status&.success?
+    abort(failure) unless status&.success?
     output
   end
 
-  # The scores of every method of +sources+ that Flog rates above FLOG_METHOD_THRESHOLD.
-  # @param report [String] the output of `flog --all --methods-only`
-  # @return [Array<String>] "score: method" of each method that is too complex
-  sig { params(report: String).returns(T::Array[String]) }
-  def self.complex_methods(report)
-    report.scan(/^\s*(\d+\.\d+): (\S+)\s+\S+:\d+/).filter_map do |score, name|
-      "#{score}: #{name}" if Float(score.to_s) > FLOG_METHOD_THRESHOLD
-    end
+  # Loads the Ruby script +name+ of script/, runs it (the block) and aborts when it fails.
+  # @param name [String]
+  # @yieldreturn [Integer] the exit status of the script
+  sig { params(name: String, block: T.proc.returns(Integer)).void }
+  def self.script(name, &block)
+    require(File.join(SCRIPTS, name))
+    abort("script/#{name}.rb failed") if yield.nonzero?
   end
 
   desc 'Run RuboCop (the application and the repository scripts)'
@@ -75,18 +58,24 @@ module QualityGates
     sh 'bundle exec srb tc'
   end
 
-  desc 'Fail unless every public API object (of the application and of the scripts) is documented, without warnings'
+  desc 'Fail unless every object, private and protected ones included, is documented (application and scripts), ' \
+    'without a YARD warning'
   task :yard do
     # The application reads .yardopts; YARD cannot be pointed at files outside its working directory, so the
     # scripts are documented from their own directory with the same options.
-    script_files = %w[--plugin sorbet --no-private --markup markdown outdated.rb outdated/**/*.rb scorecards.rb]
+    script_files = %w[--private --protected --markup markdown outdated.rb outdated/**/*.rb scorecards.rb]
     { Dir.pwd => [], SCRIPTS => script_files }.each do |directory, files|
+      capture(
+        [*Programs::RUBY, Programs::YARD, '--', 'doc', '--fail-on-warning', '--no-output', '--no-save', *files],
+        "YARD: warnings in #{directory}",
+        directory:
+      )
       output = capture(
-        ['bundle', 'exec', 'yard', 'stats', '--list-undoc', '--no-save', *files],
+        [*Programs::RUBY, Programs::YARD, '--', 'stats', '--list-undoc', '--no-save', *files],
         "YARD failed in #{directory}",
         directory:
       )
-      abort "YARD: undocumented API objects found in #{directory}" if output.exclude?(FULLY_DOCUMENTED)
+      abort "YARD: undocumented objects found in #{directory}" if output.exclude?(FULLY_DOCUMENTED)
       abort "YARD: warnings in #{directory}" if output.include?('[warn]')
     end
   end
@@ -96,34 +85,32 @@ module QualityGates
     capture(['bundle', 'exec', 'reek', *SOURCES], 'Reek: code smells found')
   end
 
-  desc 'Fail on any structural duplication'
+  desc "Fail on any structural duplication (Flay's default mass)"
   task :flay do
-    output = capture(['bundle', 'exec', 'flay', '--mass', FLAY_MASS.to_s, *SOURCES], 'Flay failed')
+    output = capture(['bundle', 'exec', 'flay', *SOURCES], 'Flay failed')
     abort 'Flay: duplicated code found' unless output.start_with?('Total score (lower is better) = 0')
   end
 
-  desc "Fail on any method with a Flog score above #{FLOG_METHOD_THRESHOLD}"
+  desc "Fail on any method with a Flog score above #{Complexity::THRESHOLD}"
   task :flog do
-    complex = complex_methods(capture(['bundle', 'exec', 'flog', '--all', '--methods-only', *SOURCES], 'Flog failed'))
-    abort "Flog: methods scoring above #{FLOG_METHOD_THRESHOLD}:\n#{complex.join("\n")}" unless complex.empty?
+    report = capture(['bundle', 'exec', 'flog', '--all', '--methods-only', *SOURCES], 'Flog failed')
+    complex = Complexity.complex_methods(report)
+    abort "Flog: methods scoring above #{Complexity::THRESHOLD}:\n#{complex.join("\n")}" unless complex.empty?
   end
 
   desc 'Fail on any method nothing calls (debride); the actions the routes dispatch to count as called'
   task debride: :environment do
-    Tempfile.create('routed-actions') do |routed|
-      routed.write(
-        Rails.application.routes.routes.filter_map { |route| route.defaults[:action] }
-        .join("\n")
-      )
-      routed.flush
-      output = capture(['bundle', 'exec', 'debride', '--rails', '--whitelist', routed.path, *SOURCES], 'debride failed')
+    actions = Rails.application.routes.routes.filter_map { |route| route.defaults[:action] }
+    QualityGates.with_file(actions) do |routed|
+      output = capture(['bundle', 'exec', 'debride', '--rails', '--whitelist', routed, *SOURCES], 'debride failed')
       abort 'debride: methods without a caller found' if output.exclude?('Total suspect LOC: 0')
     end
   end
 
   desc 'Fail on any Brakeman warning (security static analysis)'
   task :brakeman do
-    sh 'bundle exec brakeman --quiet --no-pager --no-summary --ensure-latest --ensure-ignore-notes --run-all-checks'
+    options = %w[--quiet --no-pager --no-summary --ensure-latest --ensure-ignore-notes --run-all-checks]
+    capture([*Programs::RUBY, Programs::BRAKEMAN, '--', *options], 'Brakeman: warnings found')
   end
 
   desc 'Audit gem dependencies for known vulnerabilities'
@@ -133,7 +120,12 @@ module QualityGates
 
   desc 'Fail on outdated dependencies that are not on the documented hold list (script/outdated_holds.yml)'
   task :outdated do
-    ruby File.join(REPOSITORY_ROOT, 'script', 'outdated.rb')
+    script('outdated') { Outdated.run }
+  end
+
+  desc 'Fail when the pull request adds a dependency below the OpenSSF Scorecard threshold (script/scorecards.rb)'
+  task :scorecards do
+    script('scorecards') { Scorecards.run }
   end
 
   desc 'Run mutation testing (see .mutant.yml); every mutation must be killed'

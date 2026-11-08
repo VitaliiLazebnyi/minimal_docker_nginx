@@ -12,8 +12,13 @@ module Bundler::ConnectionPool::ForkTracker; end
 # (`config.infer_spec_type_from_file_location!` in spec/rails_helper.rb); Sorbet's RSpec support needs the same
 # ancestry declared.
 class RSpec::Core::ExampleGroup
-  include ::RSpec::Matchers
+  # spec/spec_helper.rb: the signatures of the memoized helpers and helper methods of the example groups.
+  extend T::Sig
+
+  # Included before RSpec::Matchers, whose #expect (which also takes a block) takes precedence over the #expect of
+  # rspec-mocks, as it does at runtime.
   include ::RSpec::Mocks::ExampleMethods
+  include ::RSpec::Matchers
   include ::RSpec::Rails::Matchers
   include ::RSpec::Rails::RequestExampleGroup
 
