@@ -5,7 +5,7 @@ supply chain.
 
 ## Supported Versions
 
-Security fixes are made on the `main` branch; the image is built from it. There are no maintained release branches.
+Security fixes are made on the `main` branch, from which the image is built. There are no maintained release branches.
 
 ## Reporting a Vulnerability
 
