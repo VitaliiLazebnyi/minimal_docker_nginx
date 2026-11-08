@@ -59,3 +59,7 @@ of any of its jobs contains a warning or a deprecation notice, and every job run
 
 The vulnerability reports of the image (Trivy, Grype) and the list of its files are uploaded as the `image-reports`
 artifact of every run of the Docker image workflow.
+
+## License
+
+Released under the [MIT License](LICENSE.txt).
