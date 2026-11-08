@@ -101,3 +101,7 @@ and CodeQL scans the Ruby code and the workflows with the security-extended and 
   low-scoring npm dependencies; the Rails app depends on the frameworks it loads, not on the `rails` meta-gem).
 - **Everything is pinned and current.** Docker images are pinned by digest, GitHub Actions by commit, Python tools by
   hash, release binaries by SHA-256; `rake outdated` keeps them at their newest releases.
+- **Changes reach `main` through pull requests only.** The `main` ruleset (no bypass) requires a pull request with every
+  conversation resolved, every job of the pull-request workflows passing on the up-to-date branch, no CodeQL alert of
+  high severity or above, signed commits and a linear history (squash merges only), and forbids force pushes and
+  deletion.
