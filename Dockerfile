@@ -3,7 +3,7 @@
 # ==========================================
 # Pinned by digest; Dependabot (docker) proposes updates and `rake outdated` fails when the tag has moved
 # or a newer Ruby/Alpine release exists (see script/outdated_holds.yml).
-FROM ruby:4.0.9-alpine3.24@sha256:8ad6909db16ad53b5dc90bb8cc157e5fdd89ba1172798316b95cfd2a61f14b1e AS builder
+FROM ruby:4.0.9-alpine3.24@sha256:921ad0cc0f6bf76ed48ed6847a4c55a928e920bc7a2f2697aed498942c50ea00 AS builder
 
 # Every RUN below uses pipes; without pipefail a failing producer would go unnoticed.
 SHELL ["/bin/ash", "-eo", "pipefail", "-c"]
