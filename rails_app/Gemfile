@@ -27,7 +27,7 @@ gem 'sqlite3', '~> 2.10'
 
 group :development do
   # `bin/dev` (rails server) for local development; production is served by Passenger.
-  gem 'puma', '~> 8.0', require: false
+  gem 'puma', '~> 8.1', require: false
 end
 
 group :development, :test do
@@ -72,7 +72,7 @@ group :development, :test do
   # Cops for code that is unsafe under threads.
   gem 'rubocop-thread_safety', '~> 0.8', require: false
   # Cops for YARD documentation tags.
-  gem 'rubocop-yard', '~> 1.3', require: false
+  gem 'rubocop-yard', '~> 1.4', require: false
   # The static type checker (`rake typecheck`).
   gem 'sorbet', '~> 0.6', require: false
   # Generates the gem and DSL RBIs Sorbet checks against (`rake typecheck`).
